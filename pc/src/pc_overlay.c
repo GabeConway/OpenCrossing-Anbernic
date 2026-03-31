@@ -2,6 +2,7 @@
 #include "pc_platform.h"
 #include "pc_overlay.h"
 #include "pc_settings.h"
+#include "pc_keybindings.h"
 
 /* ---- Vertex type ---- */
 typedef struct { float x, y, u, v, r, g, b, a; } OvVtx;
@@ -28,6 +29,19 @@ static int rep_up = 0, rep_down = 0, rep_left = 0, rep_right = 0;
 #define REP_DELAY  16  /* frames before repeat starts */
 #define REP_RATE    3  /* frames between repeats */
 
+/* ---- Controls tab: scroll + keybind capture ---- */
+#define CTRL_VISIBLE_ROWS 8
+static int   ctrl_scroll       = 0;   /* scroll offset within Controls tab */
+static int   ctrl_capture_idx  = -1;  /* index into KB_COUNT being captured, -1 = none */
+static Uint32 ctrl_capture_start = 0; /* SDL_GetTicks() when capture started */
+#define CTRL_CAPTURE_MS 3000
+static Uint8 s_prev_keys[SDL_NUM_SCANCODES];              /* previous-frame keyboard state for edge detection */
+static Uint8 s_prev_gamepad[SDL_CONTROLLER_BUTTON_MAX];   /* previous-frame gamepad button state */
+static int   s_prev_ctrl_a = 0;                           /* gamepad A button last frame (for enter-capture edge) */
+static Uint32 ctrl_clear_start  = 0;  /* SDL_GetTicks() when X/Del hold started on a KB item, 0 = not held */
+static int    ctrl_clear_kb_idx = -1; /* which kb_idx is being held for clear */
+#define CTRL_CLEAR_MS 1500            /* hold this long to clear a binding */
+
 /* ---- Menu items ---- */
 enum {
     MI_FPS_COUNTER,
@@ -44,55 +58,86 @@ enum {
     MI_WINDOW_SIZE,
     MI_SCALE_MODE,
     MI_VERBOSE,
-    MI_COUNT
+    /* Controls tab */
+    MI_CTRL_SWAP_AB,
+    MI_CTRL_DPAD_STICK,
+    MI_LEFT_DEADZONE,
+    MI_RIGHT_DEADZONE,
+    MI_CTRL_RESET,
+    MI_KB_BASE,
+    MI_COUNT = MI_KB_BASE + KB_COUNT,
 };
 
+/* Labels for non-KB items; KB items use pc_keybinding_label() at draw time */
 static const char* menu_labels[MI_COUNT] = {
-    "FPS Counter",
-    "Master Volume",
-    "Music",
-    "Sound Effects",
-    "Voices",
-    "Fullscreen",
-    "V-Sync",
-    "MSAA",
-    "Camera Zoom",
-    "FPS Target",
-    "Render Scale",
-    "Render Res",
-    "Scale Mode",
-    "Verbose Log",
+    [MI_FPS_COUNTER]     = "FPS Counter",
+    [MI_MASTER_VOLUME]   = "Master Volume",
+    [MI_BGM_VOLUME]      = "Music",
+    [MI_SFX_VOLUME]      = "Sound Effects",
+    [MI_VOICE_VOLUME]    = "Voices",
+    [MI_FULLSCREEN]      = "Fullscreen",
+    [MI_VSYNC]           = "V-Sync",
+    [MI_MSAA]            = "MSAA",
+    [MI_ZOOM_ENABLED]    = "Camera Zoom",
+    [MI_FPS_TARGET]      = "FPS Target",
+    [MI_RENDER_SCALE]    = "Render Scale",
+    [MI_WINDOW_SIZE]     = "Render Res",
+    [MI_SCALE_MODE]      = "Scale Mode",
+    [MI_VERBOSE]         = "Verbose Log",
+    [MI_CTRL_SWAP_AB]    = "Swap A/B, X/Y",
+    [MI_CTRL_DPAD_STICK] = "Dpad as Joystick",
+    [MI_LEFT_DEADZONE]   = "L-Stick Deadzone",
+    [MI_RIGHT_DEADZONE]  = "R-Stick Deadzone",
+    [MI_CTRL_RESET]      = "Reset Defaults",
+    /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: NULL, handled via pc_keybinding_label() */
 };
+
+static const char* get_item_label(int i) {
+    if (i >= MI_KB_BASE && i < MI_KB_BASE + KB_COUNT)
+        return pc_keybinding_label(i - MI_KB_BASE);
+    return menu_labels[i];
+}
 
 /* ---- Menu tabs ---- */
-enum { TAB_VIDEO, TAB_AUDIO, TAB_DEBUG, TAB_COUNT };
-static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "DEBUG" };
+enum { TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_DEBUG, TAB_COUNT };
+static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "CTRL", "DEBUG" };
 static int s_active_tab = 0;
 
 /* Which tab each menu item belongs to (indexed by MI_*) */
 static const int menu_item_tab[MI_COUNT] = {
-    /* MI_FPS_COUNTER  */ TAB_DEBUG,
-    /* MI_MASTER_VOLUME*/ TAB_AUDIO,
-    /* MI_BGM_VOLUME   */ TAB_AUDIO,
-    /* MI_SFX_VOLUME   */ TAB_AUDIO,
-    /* MI_VOICE_VOLUME */ TAB_AUDIO,
-    /* MI_FULLSCREEN   */ TAB_VIDEO,
-    /* MI_VSYNC        */ TAB_VIDEO,
-    /* MI_MSAA         */ TAB_VIDEO,
-    /* MI_ZOOM_ENABLED */ TAB_VIDEO,
-    /* MI_FPS_TARGET   */ TAB_VIDEO,
-    /* MI_RENDER_SCALE */ TAB_VIDEO,
-    /* MI_WINDOW_SIZE  */ TAB_VIDEO,
-    /* MI_SCALE_MODE   */ TAB_VIDEO,
-    /* MI_VERBOSE      */ TAB_DEBUG,
+    [MI_FPS_COUNTER]     = TAB_DEBUG,
+    [MI_MASTER_VOLUME]   = TAB_AUDIO,
+    [MI_BGM_VOLUME]      = TAB_AUDIO,
+    [MI_SFX_VOLUME]      = TAB_AUDIO,
+    [MI_VOICE_VOLUME]    = TAB_AUDIO,
+    [MI_FULLSCREEN]      = TAB_VIDEO,
+    [MI_VSYNC]           = TAB_VIDEO,
+    [MI_MSAA]            = TAB_VIDEO,
+    [MI_ZOOM_ENABLED]    = TAB_VIDEO,
+    [MI_FPS_TARGET]      = TAB_VIDEO,
+    [MI_RENDER_SCALE]    = TAB_VIDEO,
+    [MI_WINDOW_SIZE]     = TAB_VIDEO,
+    [MI_SCALE_MODE]      = TAB_VIDEO,
+    [MI_VERBOSE]         = TAB_DEBUG,
+    [MI_CTRL_SWAP_AB]    = TAB_CONTROLS,
+    [MI_CTRL_DPAD_STICK] = TAB_CONTROLS,
+    [MI_LEFT_DEADZONE]   = TAB_CONTROLS,
+    [MI_RIGHT_DEADZONE]  = TAB_CONTROLS,
+    [MI_CTRL_RESET]      = TAB_CONTROLS,
+    /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: handled by item_tab() helper below */
 };
 
-/* Returns index of nth visible item in the active tab, or -1 if out of range.
- * Also used to count visible items: count = tab_item_count(). */
+/* Tab for item i — KB items always belong to TAB_CONTROLS */
+static int item_tab(int i) {
+    if (i >= MI_KB_BASE && i < MI_KB_BASE + KB_COUNT) return TAB_CONTROLS;
+    return menu_item_tab[i];
+}
+
+/* Returns index of nth visible item in the active tab, or -1 if out of range. */
 static int tab_item_at(int n) {
     int found = 0;
     for (int i = 0; i < MI_COUNT; i++) {
-        if (menu_item_tab[i] == s_active_tab) {
+        if (item_tab(i) == s_active_tab) {
             if (found == n) return i;
             found++;
         }
@@ -102,7 +147,7 @@ static int tab_item_at(int n) {
 static int tab_item_count(void) {
     int count = 0;
     for (int i = 0; i < MI_COUNT; i++)
-        if (menu_item_tab[i] == s_active_tab) count++;
+        if (item_tab(i) == s_active_tab) count++;
     return count;
 }
 
@@ -144,7 +189,41 @@ static void menu_get_value(int item, char* buf, int sz) {
     case MI_SCALE_MODE:
         snprintf(buf, sz, "%s", g_pc_settings.scale_mode == 1 ? "Center" : "Stretch");
         break;
-    case MI_VERBOSE:       snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
+    case MI_VERBOSE:         snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
+    case MI_CTRL_SWAP_AB:    snprintf(buf, sz, "Press >"); break;
+    case MI_CTRL_DPAD_STICK: snprintf(buf, sz, "%s", g_pc_settings.dpad_as_stick ? "ON" : "OFF"); break;
+    case MI_LEFT_DEADZONE:   snprintf(buf, sz, "%d%%", g_pc_settings.left_deadzone); break;
+    case MI_RIGHT_DEADZONE:  snprintf(buf, sz, "%d%%", g_pc_settings.right_deadzone); break;
+    case MI_CTRL_RESET:      snprintf(buf, sz, "Press >"); break;
+    default:
+        if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT) {
+            int kb_idx = item - MI_KB_BASE;
+            if (kb_idx == ctrl_capture_idx) {
+                /* Rebind capture: show countdown */
+                Uint32 elapsed = SDL_GetTicks() - ctrl_capture_start;
+                int secs_left = (int)((CTRL_CAPTURE_MS - (int)elapsed + 999) / 1000);
+                if (secs_left < 1) secs_left = 1;
+                snprintf(buf, sz, "[%d...]", secs_left);
+            } else if (kb_idx == ctrl_clear_kb_idx && ctrl_clear_start) {
+                /* Hold-to-clear: show shrinking countdown */
+                int ms_left = CTRL_CLEAR_MS - (int)(SDL_GetTicks() - ctrl_clear_start);
+                if (ms_left < 0) ms_left = 0;
+                snprintf(buf, sz, "[CLR %d]", (ms_left + 999) / 1000);
+            } else {
+                PCInputCode* p = pc_keybinding_ptr(kb_idx);
+                PCInputCode code = p ? *p : -1;
+                if (code < 0) snprintf(buf, sz, "[NONE]");
+                else if ((unsigned)code & PC_INPUT_GAMEPAD_BIT) {
+                    const char* s = SDL_GameControllerGetStringForButton(
+                        (SDL_GameControllerButton)(code & 0xFF));
+                    snprintf(buf, sz, "GP %s", s ? s : "?");
+                } else {
+                    const char* name = SDL_GetScancodeName((SDL_Scancode)code);
+                    snprintf(buf, sz, "%.*s", sz - 1, name);
+                }
+            }
+        }
+        break;
     }
 }
 
@@ -216,7 +295,35 @@ static void menu_adjust(int item, int dir) {
         g_pc_settings.scale_mode ^= 1;
         g_pc_scale_mode = g_pc_settings.scale_mode;
         break;
-    case MI_VERBOSE:       g_pc_settings.verbose ^= 1; break;
+    case MI_VERBOSE:         g_pc_settings.verbose ^= 1; break;
+    case MI_CTRL_SWAP_AB: {
+        /* Swap A↔B and X↔Y directly in keybindings so the mapping list reflects it */
+        PCInputCode tmp;
+        tmp = g_pc_keybindings.a; g_pc_keybindings.a = g_pc_keybindings.b; g_pc_keybindings.b = tmp;
+        tmp = g_pc_keybindings.x; g_pc_keybindings.x = g_pc_keybindings.y; g_pc_keybindings.y = tmp;
+        pc_keybindings_save();
+        break;
+    }
+    case MI_CTRL_DPAD_STICK: g_pc_settings.dpad_as_stick ^= 1; break;
+    case MI_LEFT_DEADZONE: {
+        int v = g_pc_settings.left_deadzone + dir * 5;
+        if (v < 0) v = 0; if (v > 50) v = 50;
+        g_pc_settings.left_deadzone = v;
+        break;
+    }
+    case MI_RIGHT_DEADZONE: {
+        int v = g_pc_settings.right_deadzone + dir * 5;
+        if (v < 0) v = 0; if (v > 50) v = 50;
+        g_pc_settings.right_deadzone = v;
+        break;
+    }
+    case MI_CTRL_RESET:      pc_keybindings_reset(); break;
+    default:
+        if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT && dir == 1) {
+            ctrl_capture_idx = item - MI_KB_BASE;
+            ctrl_capture_start = SDL_GetTicks();
+        }
+        break;
     }
 }
 
@@ -437,15 +544,65 @@ static int ov_repeat(int held, int* timer) {
 static void menu_process_input(void) {
     if (!g_pc_menu_open) return;
 
-    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    int nkeys;
+    const Uint8* keys = SDL_GetKeyboardState(&nkeys);
+    SDL_GameController* ctrl = pc_pad_get_controller();
+
+    /* ---- Capture mode: intercept all input until key is pressed or timeout ---- */
+    if (ctrl_capture_idx >= 0) {
+        Uint32 elapsed = SDL_GetTicks() - ctrl_capture_start;
+        if (elapsed >= CTRL_CAPTURE_MS) {
+            /* Timed out — cancel */
+            ctrl_capture_idx = -1;
+        } else {
+            /* Scan for any new keyboard press */
+            for (int sc = SDL_SCANCODE_UNKNOWN + 1; sc < nkeys && sc < SDL_NUM_SCANCODES; sc++) {
+                if (keys[sc] && !s_prev_keys[sc]) {
+                    /* Set binding and exit capture */
+                    PCInputCode* p = pc_keybinding_ptr(ctrl_capture_idx);
+                    if (p) *p = (PCInputCode)sc;
+                    pc_keybindings_save();
+                    ctrl_capture_idx = -1;
+                    break;
+                }
+            }
+        }
+        /* Also scan gamepad buttons (covers PortMaster and other gamepad-only devices) */
+        if (ctrl_capture_idx >= 0 && ctrl) {
+            int btn;
+            for (btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
+                int cur = SDL_GameControllerGetButton(ctrl, (SDL_GameControllerButton)btn);
+                if (cur && !s_prev_gamepad[btn]) {
+                    PCInputCode* p = pc_keybinding_ptr(ctrl_capture_idx);
+                    if (p) *p = PC_INPUT_GAMEPAD_BTN(btn);
+                    pc_keybindings_save();
+                    ctrl_capture_idx = -1;
+                    break;
+                }
+            }
+        }
+
+        /* Always update prev state and return — suppress normal nav in capture mode */
+        if (nkeys > SDL_NUM_SCANCODES) nkeys = SDL_NUM_SCANCODES;
+        SDL_memcpy(s_prev_keys, keys, nkeys);
+        {
+            int btn;
+            for (btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++)
+                s_prev_gamepad[btn] = (Uint8)(ctrl ? SDL_GameControllerGetButton(ctrl, (SDL_GameControllerButton)btn) : 0);
+        }
+        s_prev_ctrl_a = ctrl ? SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_A) : 0;
+        return;
+    }
+
+    /* ---- Normal navigation ---- */
     int up    = keys[SDL_SCANCODE_UP];
     int down  = keys[SDL_SCANCODE_DOWN];
     int left  = keys[SDL_SCANCODE_LEFT];
     int right = keys[SDL_SCANCODE_RIGHT];
     int tab_l = keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_PAGEUP];
     int tab_r = keys[SDL_SCANCODE_E] || keys[SDL_SCANCODE_PAGEDOWN];
+    int ctrl_a = 0, ctrl_x = 0;
 
-    SDL_GameController* ctrl = pc_pad_get_controller();
     if (ctrl) {
         up    |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_UP);
         down  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
@@ -453,6 +610,8 @@ static void menu_process_input(void) {
         right |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
         tab_l |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
         tab_r |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+        ctrl_a = SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_A);
+        ctrl_x = SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_X);
     }
 
     /* Tab switching */
@@ -461,22 +620,73 @@ static void menu_process_input(void) {
         s_active_tab--;
         if (s_active_tab < 0) s_active_tab = TAB_COUNT - 1;
         menu_cursor = 0;
+        ctrl_scroll = 0;
     }
     if (ov_repeat(tab_r, &rep_tabr)) {
         s_active_tab++;
         if (s_active_tab >= TAB_COUNT) s_active_tab = 0;
         menu_cursor = 0;
+        ctrl_scroll = 0;
     }
 
     int count = tab_item_count();
-    if (ov_repeat(up,    &rep_up))    { menu_cursor--; if (menu_cursor < 0) menu_cursor = count - 1; }
-    if (ov_repeat(down,  &rep_down))  { menu_cursor++; if (menu_cursor >= count) menu_cursor = 0; }
+    if (ov_repeat(up,   &rep_up))   { menu_cursor--; if (menu_cursor < 0) menu_cursor = count - 1; }
+    if (ov_repeat(down, &rep_down)) { menu_cursor++; if (menu_cursor >= count) menu_cursor = 0; }
+
+    /* Keep scroll window in sync with cursor (Controls tab only) */
+    if (s_active_tab == TAB_CONTROLS) {
+        if (menu_cursor < ctrl_scroll)
+            ctrl_scroll = menu_cursor;
+        if (menu_cursor >= ctrl_scroll + CTRL_VISIBLE_ROWS)
+            ctrl_scroll = menu_cursor - CTRL_VISIBLE_ROWS + 1;
+        if (ctrl_scroll < 0) ctrl_scroll = 0;
+    }
 
     int mi = tab_item_at(menu_cursor);
     if (mi >= 0) {
         if (ov_repeat(left,  &rep_left))  menu_adjust(mi, -1);
         if (ov_repeat(right, &rep_right)) menu_adjust(mi, +1);
+
+        /* Gamepad A (rising edge) on a KB item → enter capture */
+        if (mi >= MI_KB_BASE && mi < MI_KB_BASE + KB_COUNT) {
+            if (ctrl_a && !s_prev_ctrl_a) {
+                ctrl_capture_idx = mi - MI_KB_BASE;
+                ctrl_capture_start = SDL_GetTicks();
+            }
+            /* X button or Delete key held → clear binding after CTRL_CLEAR_MS.
+             * Uses a hold timer rather than edge detection to prevent the button
+             * just used for capture from immediately clearing the new binding. */
+            {
+                int x_or_del = ctrl_x || keys[SDL_SCANCODE_DELETE];
+                if (x_or_del) {
+                    if (!ctrl_clear_start) {
+                        ctrl_clear_start  = SDL_GetTicks();
+                        ctrl_clear_kb_idx = mi - MI_KB_BASE;
+                    }
+                    if (SDL_GetTicks() - ctrl_clear_start >= CTRL_CLEAR_MS) {
+                        PCInputCode* p = pc_keybinding_ptr(mi - MI_KB_BASE);
+                        if (p) *p = -1;
+                        pc_keybindings_save();
+                        ctrl_clear_start  = 0;
+                        ctrl_clear_kb_idx = -1;
+                    }
+                } else {
+                    ctrl_clear_start  = 0;
+                    ctrl_clear_kb_idx = -1;
+                }
+            }
+        }
     }
+
+    /* Update edge-detection state */
+    if (nkeys > SDL_NUM_SCANCODES) nkeys = SDL_NUM_SCANCODES;
+    SDL_memcpy(s_prev_keys, keys, nkeys);
+    {
+        int btn;
+        for (btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++)
+            s_prev_gamepad[btn] = (Uint8)(ctrl ? SDL_GameControllerGetButton(ctrl, (SDL_GameControllerButton)btn) : 0);
+    }
+    s_prev_ctrl_a = ctrl_a;
 }
 
 /* ---- Draw: FPS counter (top-right corner) ---- */
@@ -507,8 +717,18 @@ static void draw_menu(float cw, float ch, float pad) {
     int tab_count = tab_item_count();
     int cols = 28;
     int val_col = 18;
-    /* Title row + tab bar row + blank + items + blank + 2 footer rows */
-    int lines = 1 + 1 + 1 + tab_count + 1 + 2;
+
+    /* Controls tab shows at most CTRL_VISIBLE_ROWS items */
+    int vis_count = tab_count;
+    int vis_start = 0;
+    if (s_active_tab == TAB_CONTROLS) {
+        vis_start = ctrl_scroll;
+        vis_count = tab_count - ctrl_scroll;
+        if (vis_count > CTRL_VISIBLE_ROWS) vis_count = CTRL_VISIBLE_ROWS;
+    }
+
+    /* Title row + tab bar row + blank + visible items + blank + 2 footer rows */
+    int lines = 1 + 1 + 1 + vis_count + 1 + 2;
 
     float mw = cols * cw + 2.0f * pad;
     float mh = lines * (ch + pad) + pad;
@@ -529,7 +749,6 @@ static void draw_menu(float cw, float ch, float pad) {
 
     /* Tab bar — draw all tabs, highlight active one */
     {
-        /* Distribute tab labels evenly across cols chars */
         int tab_col_w = cols / TAB_COUNT;
         for (int t = 0; t < TAB_COUNT; t++) {
             float tab_x = tx + t * tab_col_w * cw;
@@ -537,36 +756,40 @@ static void draw_menu(float cw, float ch, float pad) {
             int lbl_len = (int)strlen(lbl);
             float lbl_x = tab_x + ((tab_col_w - lbl_len) / 2) * cw;
             if (t == s_active_tab) {
-                /* Highlight active: bright white with underline block */
                 ov_string(lbl, lbl_x, ty, cw, ch, 1, 1, 0.3f, 1);
-                /* Underline */
                 ov_quad(tab_x, ty + ch, tab_col_w * cw - pad, 2.0f,
                         BG_U, BG_V, BG_U, BG_V, 1, 1, 0.3f, 1);
             } else {
                 ov_string(lbl, lbl_x, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
             }
         }
-        ty += row_h + pad; /* tab bar + blank */
+        ty += row_h + pad;
     }
 
-    /* Items for active tab */
-    for (int n = 0; n < tab_count; n++) {
-        int i = tab_item_at(n);
+    /* Scroll up arrow */
+    if (s_active_tab == TAB_CONTROLS && ctrl_scroll > 0)
+        ov_string("^", tx + (cols - 1) * cw, ty, cw, ch, 0.6f, 0.6f, 0.6f, 1);
+
+    /* Items for active tab (scrolled window) */
+    for (int n = 0; n < vis_count; n++) {
+        int item_n = vis_start + n;
+        int i = tab_item_at(item_n);
         if (i < 0) break;
 
         float r, g, b;
-        if (n == menu_cursor) { r = 1.0f; g = 1.0f; b = 0.3f; }
-        else                  { r = 0.75f; g = 0.75f; b = 0.75f; }
+        int selected = (item_n == menu_cursor);
+        if (selected) { r = 1.0f; g = 1.0f; b = 0.3f; }
+        else          { r = 0.75f; g = 0.75f; b = 0.75f; }
 
-        if (n == menu_cursor)
+        if (selected)
             ov_string(">", tx, ty, cw, ch, r, g, b, 1);
 
-        ov_string(menu_labels[i], tx + 2 * cw, ty, cw, ch, r, g, b, 1);
+        ov_string(get_item_label(i), tx + 2 * cw, ty, cw, ch, r, g, b, 1);
 
-        char val[16];
+        char val[32];
         menu_get_value(i, val, sizeof(val));
         float vr = 1, vg = 1, vb = 1;
-        if (n == menu_cursor) { vr = 1; vg = 1; vb = 0.5f; }
+        if (selected) { vr = 1; vg = 1; vb = 0.5f; }
         ov_string_right(val, tx + cols * cw, ty, cw, ch, vr, vg, vb, 1);
 
         /* Volume bar */
@@ -585,18 +808,28 @@ static void draw_menu(float cw, float ch, float pad) {
                 ov_quad(bar_x, bar_y, bar_w, bar_h, BG_U, BG_V, BG_U, BG_V, 0.3f, 0.3f, 0.3f, 1);
                 if (fill > 0)
                     ov_quad(bar_x, bar_y, bar_w * fill, bar_h, BG_U, BG_V, BG_U, BG_V,
-                            n == menu_cursor ? 1.0f : 0.6f,
-                            n == menu_cursor ? 1.0f : 0.6f,
-                            n == menu_cursor ? 0.3f : 0.6f, 1);
+                            selected ? 1.0f : 0.6f,
+                            selected ? 1.0f : 0.6f,
+                            selected ? 0.3f : 0.6f, 1);
             }
         }
 
         ty += row_h;
     }
 
-    /* Footer */
-    ty += pad;
-    ov_string("L/R:Tab  U/D:Nav  L/R:Adj", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+    /* Scroll down arrow — drawn in the gap row, not over items */
+    if (s_active_tab == TAB_CONTROLS && ctrl_scroll + CTRL_VISIBLE_ROWS < tab_count)
+        ov_string("v", tx + (cols - 1) * cw, ty, cw, ch, 0.6f, 0.6f, 0.6f, 1);
+
+    /* Footer — one full row below items */
+    ty += row_h;
+    if (ctrl_capture_idx >= 0) {
+        ov_string("Any key: bind  Back: cancel", tx, ty, cw, ch, 0.5f, 0.8f, 0.5f, 1);
+    } else if (s_active_tab == TAB_CONTROLS) {
+        ov_string(">:rebind  X/Del:clear", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+    } else {
+        ov_string("L/R:Tab  U/D:Nav  L/R:Adj", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+    }
     ty += row_h;
     ov_string("Select/Tab:Close+Save", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
 }
@@ -684,8 +917,12 @@ void pc_overlay_update(double fps, double speed) {
 void pc_overlay_menu_toggle(void) {
     g_pc_menu_open ^= 1;
     if (!g_pc_menu_open) {
-        /* Save settings on close */
+        /* Save settings and keybindings on close */
         pc_settings_save();
+        pc_keybindings_save();
+        ctrl_capture_idx  = -1;
+        ctrl_clear_start  = 0;
+        ctrl_clear_kb_idx = -1;
     }
     /* Reset repeat timers */
     rep_up = rep_down = rep_left = rep_right = 0;

@@ -17,6 +17,10 @@ typedef int PCInputCode;
 #define PC_INPUT_MOUSE2      (PC_INPUT_MOUSE_BIT | SDL_BUTTON_RIGHT)   /* right click */
 #define PC_INPUT_MOUSE3      (PC_INPUT_MOUSE_BIT | SDL_BUTTON_MIDDLE)  /* middle click */
 
+/* Gamepad button codes: PC_INPUT_GAMEPAD_BIT | SDL_GameControllerButton value */
+#define PC_INPUT_GAMEPAD_BIT 0x20000
+#define PC_INPUT_GAMEPAD_BTN(b) (PC_INPUT_GAMEPAD_BIT | (int)(b))
+
 typedef struct {
     /* buttons */
     PCInputCode a;
@@ -49,7 +53,16 @@ typedef struct {
 
 extern PCKeybindings g_pc_keybindings;
 
+#define KB_COUNT 20  /* number of bindable actions, matches s_entries[] in pc_keybindings.c */
+
 void pc_keybindings_load(void);
+void pc_keybindings_save(void);        /* write current bindings to keybindings.ini */
+void pc_keybindings_reset(void);       /* restore hard-coded defaults and save */
+int  pc_keybindings_uses_gamepad(void); /* 1 if any binding is a gamepad button */
+
+/* For overlay: idx 0..KB_COUNT-1 matches s_entries[] order (A, B, X, Y, Start, Z, L, R, Stick*, CStick*, DPad*) */
+const char*  pc_keybinding_label(int idx);  /* human-readable name, e.g. "Stick Up" */
+PCInputCode* pc_keybinding_ptr(int idx);    /* pointer into g_pc_keybindings for get/set */
 
 #ifdef __cplusplus
 }

@@ -143,24 +143,38 @@ if(NOT SDL2_FOUND)
             endif()
         endif()
     else()
-        # Linux manual fallback: search 32-bit multiarch paths directly.
+        # Linux manual fallback: search cross-compile multiarch paths directly.
         # Needed when pkg-config returns the host (64-bit) SDL2 instead of the
-        # 32-bit one, or when pkg-config is not installed.
-        find_library(SDL2_MANUAL_LIB
-            NAMES SDL2
-            PATHS
-                /usr/lib/i386-linux-gnu    # Debian/Ubuntu multiarch i386
-                /usr/lib32                  # Fedora/Arch lib32
-                /usr/lib/arm-linux-gnueabihf  # Debian/Ubuntu multiarch armhf
+        # target one, or when pkg-config is not installed.
+        # Prefer shared libraries (.so) over static (.a) so the binary works
+        # across devices with different SDL2 video/audio backends.
+        set(_sdl2_search_paths
+            /usr/lib/aarch64-linux-gnu     # Debian/Ubuntu multiarch arm64
+            /usr/lib/arm-linux-gnueabihf   # Debian/Ubuntu multiarch armhf
+            /usr/lib/i386-linux-gnu        # Debian/Ubuntu multiarch i386
+            /usr/lib32                      # Fedora/Arch lib32
+        )
+        # First try to find the shared library explicitly
+        find_library(SDL2_SHARED_LIB
+            NAMES libSDL2.so
+            PATHS ${_sdl2_search_paths}
             NO_DEFAULT_PATH
         )
-        if(SDL2_MANUAL_LIB)
+        if(NOT SDL2_SHARED_LIB)
+            # Fall back to any SDL2 library (may be static)
+            find_library(SDL2_SHARED_LIB
+                NAMES SDL2
+                PATHS ${_sdl2_search_paths}
+                NO_DEFAULT_PATH
+            )
+        endif()
+        if(SDL2_SHARED_LIB)
             set(SDL2_FOUND TRUE)
-            set(SDL2_LIBRARIES "${SDL2_MANUAL_LIB}")
+            set(SDL2_LIBRARIES "${SDL2_SHARED_LIB}")
             # Headers are architecture-independent; SDL2 always installs to /usr/include/SDL2
             set(SDL2_INCLUDE_DIRS "/usr/include/SDL2")
         endif()
-        unset(SDL2_MANUAL_LIB CACHE)
+        unset(SDL2_SHARED_LIB CACHE)
     endif()
 
     if(NOT SDL2_FOUND)
@@ -169,10 +183,40 @@ if(NOT SDL2_FOUND)
             "  Linux (x86):   sudo apt install libsdl2-dev:i386  (Debian/Ubuntu)\n"
             "                 sudo dnf install SDL2-devel.i686   (Fedora)\n"
             "  Linux (armhf): sudo apt install libsdl2-dev:armhf (Debian/Ubuntu)\n"
+            "  Linux (arm64): sudo apt install libsdl2-dev:arm64 (Debian/Ubuntu)\n"
             "  Windows/MSYS2: pacman -S mingw-w64-i686-SDL2\n"
             "  Or download SDL2 development libraries to ${CMAKE_CURRENT_SOURCE_DIR}/lib/SDL2")
     endif()
 endif()
+# On Linux, force shared SDL2 linking for cross-device portability.
+# Static SDL2 bakes in specific video/audio backends at compile time;
+# dynamic linking uses the target device's SDL2 which has the right backends.
+if(UNIX AND NOT APPLE AND SDL2_FOUND)
+    set(_sdl2_so_search_paths
+        /usr/lib/aarch64-linux-gnu
+        /usr/lib/arm-linux-gnueabihf
+        /usr/lib/i386-linux-gnu
+        /usr/lib32
+        /usr/lib
+    )
+    find_library(_sdl2_shared_lib
+        NAMES libSDL2.so
+        PATHS ${_sdl2_so_search_paths}
+        NO_DEFAULT_PATH
+    )
+    if(NOT _sdl2_shared_lib)
+        # Also try default search paths
+        find_library(_sdl2_shared_lib NAMES libSDL2.so)
+    endif()
+    if(_sdl2_shared_lib)
+        set(SDL2_LIBRARIES "${_sdl2_shared_lib}")
+        set(SDL2_FORCE_SHARED TRUE)
+        message(STATUS "SDL2 forced shared: ${_sdl2_shared_lib}")
+    endif()
+    unset(_sdl2_shared_lib CACHE)
+endif()
+
+
 include_directories(${SDL2_INCLUDE_DIRS})
 message(STATUS "SDL2 include: ${SDL2_INCLUDE_DIRS}")
 message(STATUS "SDL2 libraries: ${SDL2_LIBRARIES}")
@@ -366,6 +410,23 @@ add_compile_options($<$<COMPILE_LANGUAGE:C>:-Dnullptr=NULL>)
 # =============================================================================
 # Per-source warning settings & GCC compatibility
 # =============================================================================
+# Decomp code: suppress all warnings (fires heavily on decompiled code)
+# Clang treats some decomp patterns as errors even with -w:
+# -Wno-return-type: missing return values in non-void functions
+# -Wno-initializer-overrides: GBI macros use designated initializers with overlapping fields
+set(DECOMP_WARN_FLAGS "-w;-fpermissive;-Wno-return-type;-Wno-error=return-type;-fno-stack-protector")
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    list(APPEND DECOMP_WARN_FLAGS "-Wno-c99-designator" "-Wno-initializer-overrides")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR
+            "64-bit builds require GCC (Clang rejects pointer-to-u32 truncation in GBI static initializers).\n"
+            "  macOS:  brew install gcc && cmake .. -DCMAKE_C_COMPILER=gcc-15 -DCMAKE_CXX_COMPILER=g++-15\n"
+            "          (adjust version number to match installed GCC, e.g. gcc-14/g++-14)\n"
+            "  Linux:  GCC is typically the default compiler.")
+    endif()
+endif()
+
+
 # Decomp code uses K&R-style empty parameter lists: void f() {} with prototype
 # void f(int, int). In C99/C11 () means "no args" → type conflict. In gnu89
 # () means "unspecified args" → compatible. Use gnu89 for all decomp C sources.
@@ -447,10 +508,15 @@ endif()
 if(WIN32)
     target_link_libraries(ac_pc opengl32 winmm imm32 version setupapi)
 elseif(PC_USE_GLES)
-    target_link_libraries(ac_pc dl pthread m)
-    find_library(GLESV2_LIB GLESv2)
+    # -Wl,-no-as-needed forces NEEDED entries even when symbols are loaded
+    # via function pointers at runtime (glad, dladdr). Without this, --as-needed
+    # silently drops libGLESv2/libdl/libpthread from the dynamic section.
+    target_link_libraries(ac_pc -Wl,-no-as-needed dl pthread m -Wl,-as-needed)
+    find_library(GLESV2_LIB GLESv2 HINTS /usr/lib/aarch64-linux-gnu /usr/lib/arm-linux-gnueabihf)
     if(GLESV2_LIB)
-        target_link_libraries(ac_pc ${GLESV2_LIB})
+        target_link_libraries(ac_pc -Wl,-no-as-needed ${GLESV2_LIB} -Wl,-as-needed)
+    else()
+        message(WARNING "libGLESv2 not found — GLES rendering will fail at runtime")
     endif()
 else()
     find_package(OpenGL REQUIRED)

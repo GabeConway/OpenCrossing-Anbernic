@@ -24,6 +24,9 @@ typedef struct {
     int render_scale;     /* render resolution %: 100, 75, 50, 25 */
     int window_size;      /* 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom */
     int scale_mode;       /* 0=stretch, 1=center (letterbox) */
+    int dpad_as_stick;    /* 0=off, 1=on — dpad directions also drive main stick */
+    int left_deadzone;    /* left stick deadzone 0-50 (percent of axis range) */
+    int right_deadzone;   /* right stick deadzone 0-50 (percent of axis range) */
 } PCSettings;
 
 extern PCSettings g_pc_settings;

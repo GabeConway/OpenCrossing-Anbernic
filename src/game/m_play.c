@@ -769,6 +769,15 @@ static int makeBumpTexture(GAME_PLAY* play, GRAPH* graph1, GRAPH* graph2) {
         Debug_Display_output(play);
     }
 
+#ifdef TARGET_PC
+    /* Don't capture the EFB on a logic-only (frameskip) tick — the GL
+     * framebuffer hasn't been rendered to yet, so the copy would grab stale
+     * data. Leave mode at PRERENDER_INIT and retry on the next render tick. */
+    if (play->submenu.mode == mSM_MODE_PRERENDER_INIT && g_pc_frameskip_active) {
+        return 1;
+    }
+#endif
+
     if ((play->submenu.mode == mSM_MODE_PRERENDER_INIT) || (play->fb_mode == FBDEMO_MODE_CREATE)) {
         old_fb = NOW_POLY_OPA_DISP;
         fb_disp = gfxopen(old_fb);

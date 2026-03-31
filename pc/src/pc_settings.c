@@ -21,6 +21,9 @@ PCSettings g_pc_settings = {
     .render_scale  = 100,
     .window_size   = 2,    /* 640x480 default */
     .scale_mode    = 0,
+    .dpad_as_stick  = 0,
+    .left_deadzone  = 0,
+    .right_deadzone = 0,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -73,7 +76,15 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "[Debug]\n"
     "# Verbose logging: 0 = off, 1 = on (log to console)\n"
-    "verbose = 1\n";
+    "verbose = 1\n"
+    "\n"
+    "[Controls]\n"
+    "# D-pad also drives main analog stick: 0 = off, 1 = on\n"
+    "dpad_as_stick = 0\n"
+    "\n"
+    "# Left/right stick deadzone in percent (0-50, increments of 5)\n"
+    "left_deadzone = 0\n"
+    "right_deadzone = 0\n";
 
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
@@ -132,6 +143,12 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 100) g_pc_settings.voice_volume = val;
     } else if (strcmp(key, "zoom_enabled") == 0) {
         if (val == 0 || val == 1) g_pc_settings.zoom_enabled = val;
+    } else if (strcmp(key, "dpad_as_stick") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.dpad_as_stick = val;
+    } else if (strcmp(key, "left_deadzone") == 0) {
+        if (val >= 0 && val <= 50) g_pc_settings.left_deadzone = val;
+    } else if (strcmp(key, "right_deadzone") == 0) {
+        if (val >= 0 && val <= 50) g_pc_settings.right_deadzone = val;
     }
 }
 
@@ -192,6 +209,14 @@ void pc_settings_save(void) {
     fprintf(f, "\n");
     fprintf(f, "[Debug]\n");
     fprintf(f, "verbose = %d\n", g_pc_settings.verbose);
+    fprintf(f, "\n");
+    fprintf(f, "[Controls]\n");
+    fprintf(f, "# D-pad also drives main analog stick: 0 = off, 1 = on\n");
+    fprintf(f, "dpad_as_stick = %d\n", g_pc_settings.dpad_as_stick);
+    fprintf(f, "\n");
+    fprintf(f, "# Left/right stick deadzone in percent (0-50)\n");
+    fprintf(f, "left_deadzone = %d\n", g_pc_settings.left_deadzone);
+    fprintf(f, "right_deadzone = %d\n", g_pc_settings.right_deadzone);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
 }
