@@ -24,6 +24,7 @@ PCSettings g_pc_settings = {
     .dpad_as_stick  = 0,
     .left_deadzone  = 0,
     .right_deadzone = 0,
+    .swap_ab_xy     = 0,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -84,7 +85,10 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "# Left/right stick deadzone in percent (0-50, increments of 5)\n"
     "left_deadzone = 0\n"
-    "right_deadzone = 0\n";
+    "right_deadzone = 0\n"
+    "\n"
+    "# Swap A↔B and X↔Y: 0 = off, 1 = on\n"
+    "swap_ab_xy = 0\n"
 
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
@@ -149,6 +153,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 50) g_pc_settings.left_deadzone = val;
     } else if (strcmp(key, "right_deadzone") == 0) {
         if (val >= 0 && val <= 50) g_pc_settings.right_deadzone = val;
+    } else if (strcmp(key, "swap_ab_xy") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.swap_ab_xy = val;
     }
 }
 
@@ -217,8 +223,19 @@ void pc_settings_save(void) {
     fprintf(f, "# Left/right stick deadzone in percent (0-50)\n");
     fprintf(f, "left_deadzone = %d\n", g_pc_settings.left_deadzone);
     fprintf(f, "right_deadzone = %d\n", g_pc_settings.right_deadzone);
+    fprintf(f, "\n");
+    fprintf(f, "# Swap A↔B and X↔Y: 0 = off, 1 = on\n");
+    fprintf(f, "swap_ab_xy = %d\n", g_pc_settings.swap_ab_xy);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
+}
+
+void pc_settings_reset_controllers(void) {
+    g_pc_settings.dpad_as_stick = 0;
+    g_pc_settings.left_deadzone  = 0;
+    g_pc_settings.right_deadzone = 0;
+    g_pc_settings.swap_ab_xy    = 0;
+    pc_settings_save();
 }
 
 /* Window size preset table: {width, height} */

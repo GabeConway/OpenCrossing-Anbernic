@@ -27,6 +27,7 @@ typedef struct {
     int dpad_as_stick;    /* 0=off, 1=on — dpad directions also drive main stick */
     int left_deadzone;    /* left stick deadzone 0-50 (percent of axis range) */
     int right_deadzone;   /* right stick deadzone 0-50 (percent of axis range) */
+    int swap_ab_xy;       /* 0=off, 1=on — swap A↔B and X↔Y on the hardcoded gamepad path */
 } PCSettings;
 
 extern PCSettings g_pc_settings;
@@ -34,6 +35,7 @@ extern PCSettings g_pc_settings;
 void pc_settings_load(void);
 void pc_settings_save(void);
 void pc_settings_apply(void);
+void pc_settings_reset_controllers(void);
 
 #ifdef __cplusplus
 }

@@ -84,11 +84,11 @@ static const char* menu_labels[MI_COUNT] = {
     [MI_WINDOW_SIZE]     = "Render Res",
     [MI_SCALE_MODE]      = "Scale Mode",
     [MI_VERBOSE]         = "Verbose Log",
-    [MI_CTRL_SWAP_AB]    = "Swap A/B, X/Y",
-    [MI_CTRL_DPAD_STICK] = "Dpad as Joystick",
-    [MI_LEFT_DEADZONE]   = "L-Stick Deadzone",
-    [MI_RIGHT_DEADZONE]  = "R-Stick Deadzone",
-    [MI_CTRL_RESET]      = "Reset Defaults",
+    [MI_CTRL_SWAP_AB]       = "Swap A/B, X/Y",
+    [MI_CTRL_DPAD_STICK]    = "Dpad as Joystick",
+    [MI_LEFT_DEADZONE]      = "L-Stick Deadzone",
+    [MI_RIGHT_DEADZONE]     = "R-Stick Deadzone",
+    [MI_CTRL_RESET]         = "Reset Defaults",
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: NULL, handled via pc_keybinding_label() */
 };
 
@@ -119,11 +119,11 @@ static const int menu_item_tab[MI_COUNT] = {
     [MI_WINDOW_SIZE]     = TAB_VIDEO,
     [MI_SCALE_MODE]      = TAB_VIDEO,
     [MI_VERBOSE]         = TAB_DEBUG,
-    [MI_CTRL_SWAP_AB]    = TAB_CONTROLS,
-    [MI_CTRL_DPAD_STICK] = TAB_CONTROLS,
-    [MI_LEFT_DEADZONE]   = TAB_CONTROLS,
-    [MI_RIGHT_DEADZONE]  = TAB_CONTROLS,
-    [MI_CTRL_RESET]      = TAB_CONTROLS,
+    [MI_CTRL_SWAP_AB]       = TAB_CONTROLS,
+    [MI_CTRL_DPAD_STICK]    = TAB_CONTROLS,
+    [MI_LEFT_DEADZONE]      = TAB_CONTROLS,
+    [MI_RIGHT_DEADZONE]     = TAB_CONTROLS,
+    [MI_CTRL_RESET]         = TAB_CONTROLS,
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: handled by item_tab() helper below */
 };
 
@@ -190,7 +190,7 @@ static void menu_get_value(int item, char* buf, int sz) {
         snprintf(buf, sz, "%s", g_pc_settings.scale_mode == 1 ? "Center" : "Stretch");
         break;
     case MI_VERBOSE:         snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
-    case MI_CTRL_SWAP_AB:    snprintf(buf, sz, "Press >"); break;
+    case MI_CTRL_SWAP_AB:    snprintf(buf, sz, "%s", g_pc_settings.swap_ab_xy ? "ON" : "OFF"); break;
     case MI_CTRL_DPAD_STICK: snprintf(buf, sz, "%s", g_pc_settings.dpad_as_stick ? "ON" : "OFF"); break;
     case MI_LEFT_DEADZONE:   snprintf(buf, sz, "%d%%", g_pc_settings.left_deadzone); break;
     case MI_RIGHT_DEADZONE:  snprintf(buf, sz, "%d%%", g_pc_settings.right_deadzone); break;
@@ -297,10 +297,12 @@ static void menu_adjust(int item, int dir) {
         break;
     case MI_VERBOSE:         g_pc_settings.verbose ^= 1; break;
     case MI_CTRL_SWAP_AB: {
-        /* Swap A↔B and X↔Y directly in keybindings so the mapping list reflects it */
+        /* Swap A↔B and X↔Y directly in keybindings so the mapping list reflects it.
+         * Also set the swap flag so the hardcoded gamepad path picks it up. */
         PCInputCode tmp;
         tmp = g_pc_keybindings.a; g_pc_keybindings.a = g_pc_keybindings.b; g_pc_keybindings.b = tmp;
         tmp = g_pc_keybindings.x; g_pc_keybindings.x = g_pc_keybindings.y; g_pc_keybindings.y = tmp;
+        g_pc_settings.swap_ab_xy ^= 1;
         pc_keybindings_save();
         break;
     }
@@ -317,7 +319,7 @@ static void menu_adjust(int item, int dir) {
         g_pc_settings.right_deadzone = v;
         break;
     }
-    case MI_CTRL_RESET:      pc_keybindings_reset(); break;
+    case MI_CTRL_RESET:      pc_keybindings_reset(); pc_settings_reset_controllers(); break;
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT && dir == 1) {
             ctrl_capture_idx = item - MI_KB_BASE;
