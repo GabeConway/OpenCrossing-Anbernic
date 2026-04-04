@@ -26,6 +26,13 @@ static u8 ext_mixmode = MixMode_Mono;
 
 extern void Jac_HeapSetup(void* pHeap, s32 size) {
     if (pHeap != nullptr) {
+#if defined(TARGET_PC) && UINTPTR_MAX > 0xFFFFFFFFu
+        /* Capture upper 32 bits of audio heap address for pointer recovery */
+        {
+            extern uintptr_t pc_audio_ptr_base;
+            pc_audio_ptr_base = (uintptr_t)pHeap & ~(uintptr_t)0xFFFFFFFF;
+        }
+#endif
         Nas_HeapInit(&audio_hp, (u8*)pHeap, size);
         audio_hp_exist = TRUE;
     } else {
