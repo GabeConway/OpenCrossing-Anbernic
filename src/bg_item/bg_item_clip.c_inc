@@ -1,3 +1,7 @@
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
+
 static void bIT_copy_vtx(Vtx* dst, Vtx* src, u32 count, u8* fix_table, int fix_adjust_pos) {
     int i;
 
@@ -14,6 +18,11 @@ static void bIT_copy_vtx(Vtx* dst, Vtx* src, u32 count, u8* fix_table, int fix_a
 }
 
 static void bIT_draw_shadow(GAME* game, bIT_ShadowData_c* data, int type) {
+#ifdef TARGET_PC
+    if (g_pc_settings.shadow_quality == 2) {
+        return;
+    }
+#endif
     GRAPH* graph = game->graph;
     Kankyo* kankyo = &((GAME_PLAY*)game)->kankyo;
     Vtx* vtx = (Vtx*)GRAPH_ALLOC_TYPE(graph, Vtx, data->vtx_num);

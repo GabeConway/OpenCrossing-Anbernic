@@ -1,3 +1,7 @@
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
+
 static void bit_cmn_single_drawS(GAME* game, bg_item_common_info_c* common_info, mActor_name_t fg_item, xyz_t* pos,
                                  s_xyz* angle, xyz_t* scale, u8 alpha, bIT_DRAW_BF_PROC draw_bf,
                                  bIT_DRAW_AF_PROC draw_af, rgba_t* col);
@@ -1763,6 +1767,11 @@ static void bit_cmn_single_draw_loop_type1(GRAPH* graph, Gfx** gfx_pp, bIT_draw_
 
 static void bit_cmn_single_draw_item_shadow(GRAPH* graph, bg_item_draw_part_c* draw_part,
                                             bIT_draw_pos_entry_c* draw_pos_entry, f32 shadow_pos, const rgba_t* color) {
+#ifdef TARGET_PC
+    if (g_pc_settings.shadow_quality == 2) {
+        return;
+    }
+#endif
     bg_item_draw_list_c* draw_list = draw_part->shadow_draw_list;
 
     if (draw_list != NULL) {
@@ -2764,11 +2773,30 @@ static void bg_item_common_destruct(GAME_PLAY* play, ACTOR* actorx, bg_item_comm
 }
 
 static int bg_item_common_culling_check(GAME_PLAY* play, ACTOR* actorx, xyz_t* pos) {
-    xyz_t camera_pos;
-    f32 camera_w;
+#ifdef TARGET_PC
+    /* PC frustum_cull uses actor->player_distance_xz in Actor_draw_actor_no_culling_check2; the BG item
+     * actor is not at each instance's world position. Use distance from this draw instance to player. */
+    if (g_pc_settings.frustum_cull) {
+        PLAYER_ACTOR* player = GET_PLAYER_ACTOR(play);
 
-    Skin_Matrix_PrjMulVector(&play->projection_matrix, pos, &camera_pos, &camera_w);
-    return Actor_draw_actor_no_culling_check2(actorx, &camera_pos, camera_w);
+        if (player == NULL) {
+            return TRUE;
+        }
+        {
+            f32 d = search_position_distanceXZ(pos, &player->actor_class.world.position);
+            f32 lim = (f32)pc_settings_cull_limit_xz((float)actorx->cull_distance, (float)actorx->cull_radius);
+
+            return d <= lim;
+        }
+    }
+#endif
+    {
+        xyz_t camera_pos;
+        f32 camera_w;
+
+        Skin_Matrix_PrjMulVector(&play->projection_matrix, pos, &camera_pos, &camera_w);
+        return Actor_draw_actor_no_culling_check2(actorx, &camera_pos, camera_w);
+    }
 }
 
 static int bg_item_common_culling_check_talk(GAME_PLAY* play, ACTOR* actorx, xyz_t* pos) {
@@ -2997,6 +3025,11 @@ static void bg_item_common_draw_item_shadow(GRAPH* graph, Gfx** gfx_pp, bg_item_
                                             bg_item_draw_pos_c* draw_pos, f32 shadow_pos, const rgba_t* shadow_color) {
     bg_item_draw_list_c* draw_list = draw_part->shadow_draw_list;
 
+#ifdef TARGET_PC
+    if (g_pc_settings.shadow_quality == 2) {
+        return;
+    }
+#endif
     if (draw_list != NULL) {
         Vtx* vtx = (Vtx*)GRAPH_ALLOC_TYPE(graph, Vtx, draw_part->shadow_vtx_count);
 

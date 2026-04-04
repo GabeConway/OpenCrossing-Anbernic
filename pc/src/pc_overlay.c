@@ -64,6 +64,12 @@ enum {
     MI_LEFT_DEADZONE,
     MI_RIGHT_DEADZONE,
     MI_CTRL_RESET,
+    /* Perf tab */
+    MI_FRUSTUM_CULL,
+    MI_CULL_Z_MARGIN,
+    MI_CULL_MAX_DISTANCE,
+    MI_SHADOW_QUALITY,
+    MI_REDUCE_ACRE_DRAW,
     MI_KB_BASE,
     MI_COUNT = MI_KB_BASE + KB_COUNT,
 };
@@ -89,6 +95,11 @@ static const char* menu_labels[MI_COUNT] = {
     [MI_LEFT_DEADZONE]      = "L-Stick Deadzone",
     [MI_RIGHT_DEADZONE]     = "R-Stick Deadzone",
     [MI_CTRL_RESET]         = "Reset Defaults",
+    [MI_FRUSTUM_CULL]       = "Distance cull",
+    [MI_CULL_Z_MARGIN]      = "Cull +range (units)",
+    [MI_CULL_MAX_DISTANCE]  = "Cull max dist (u)",
+    [MI_SHADOW_QUALITY]     = "Shadow Quality",
+    [MI_REDUCE_ACRE_DRAW]   = "Acre Draw",
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: NULL, handled via pc_keybinding_label() */
 };
 
@@ -99,8 +110,8 @@ static const char* get_item_label(int i) {
 }
 
 /* ---- Menu tabs ---- */
-enum { TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_DEBUG, TAB_COUNT };
-static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "CTRL", "DEBUG" };
+enum { TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_DEBUG, TAB_PERF, TAB_COUNT };
+static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "CTRL", "DEBUG", "PERF" };
 static int s_active_tab = 0;
 
 /* Which tab each menu item belongs to (indexed by MI_*) */
@@ -124,6 +135,11 @@ static const int menu_item_tab[MI_COUNT] = {
     [MI_LEFT_DEADZONE]      = TAB_CONTROLS,
     [MI_RIGHT_DEADZONE]     = TAB_CONTROLS,
     [MI_CTRL_RESET]         = TAB_CONTROLS,
+    [MI_FRUSTUM_CULL]       = TAB_PERF,
+    [MI_CULL_Z_MARGIN]      = TAB_PERF,
+    [MI_CULL_MAX_DISTANCE]  = TAB_PERF,
+    [MI_SHADOW_QUALITY]     = TAB_PERF,
+    [MI_REDUCE_ACRE_DRAW]   = TAB_PERF,
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: handled by item_tab() helper below */
 };
 
@@ -170,9 +186,9 @@ static void menu_get_value(int item, char* buf, int sz) {
         break;
     case MI_ZOOM_ENABLED:  snprintf(buf, sz, "%s", g_pc_settings.zoom_enabled ? "ON" : "OFF"); break;
     case MI_FPS_TARGET: {
-        static const char* names[] = {"60 FPS", "50 FPS", "40 FPS", "30 FPS", "20 FPS", "Unlimited", "Auto", "Dynamic"};
+        static const char* names[] = {"60 FPS", "50 FPS", "40 FPS", "30 FPS", "20 FPS", "Unlimited", "Dynamic"};
         int t = g_pc_settings.fps_target;
-        if (t < 0 || t > 7) t = 0;
+        if (t < 0 || t > 6) t = 0;
         snprintf(buf, sz, "%s", names[t]);
         break;
     }
@@ -195,6 +211,29 @@ static void menu_get_value(int item, char* buf, int sz) {
     case MI_LEFT_DEADZONE:   snprintf(buf, sz, "%d%%", g_pc_settings.left_deadzone); break;
     case MI_RIGHT_DEADZONE:  snprintf(buf, sz, "%d%%", g_pc_settings.right_deadzone); break;
     case MI_CTRL_RESET:      snprintf(buf, sz, "Press >"); break;
+    case MI_FRUSTUM_CULL:    snprintf(buf, sz, "%s", g_pc_settings.frustum_cull ? "ON" : "OFF"); break;
+    case MI_CULL_Z_MARGIN:   snprintf(buf, sz, "+%d", g_pc_settings.frustum_cull_z_margin); break;
+    case MI_CULL_MAX_DISTANCE: {
+        if (g_pc_settings.frustum_cull_max_distance == 0)
+            snprintf(buf, sz, "No cap");
+        else
+            snprintf(buf, sz, "%d", g_pc_settings.frustum_cull_max_distance);
+        break;
+    }
+    case MI_SHADOW_QUALITY: {
+        static const char* snames[] = {"All", "Player only", "Off", "Player + NPC"};
+        int s = g_pc_settings.shadow_quality;
+        if (s < 0 || s > 3) s = 0;
+        snprintf(buf, sz, "%s", snames[s]);
+        break;
+    }
+    case MI_REDUCE_ACRE_DRAW: {
+        static const char* arnames[] = {"Full", "Cross (5)", "Current"};
+        int ar = g_pc_settings.reduce_acre_draw;
+        if (ar < 0 || ar > 2) ar = 0;
+        snprintf(buf, sz, "%s", arnames[ar]);
+        break;
+    }
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT) {
             int kb_idx = item - MI_KB_BASE;
@@ -264,9 +303,9 @@ static void menu_adjust(int item, int dir) {
     case MI_FPS_TARGET: {
         /* Right = faster (lower index), Left = slower (higher index) */
         int v = g_pc_settings.fps_target - dir;
-        if (v < 0) v = 7; if (v > 7) v = 0;
+        if (v < 0) v = 6; if (v > 6) v = 0;
         g_pc_settings.fps_target = v;
-        static const int fps_hz[8] = {60, 50, 40, 30, 20, 0, 60, 60};
+        static const int fps_hz[7] = {60, 50, 40, 30, 20, 0, 60};
         g_pc_fps_target = fps_hz[v];
         if (v == 5) g_pc_no_framelimit = 1;
         else        g_pc_no_framelimit = 0;
@@ -320,6 +359,59 @@ static void menu_adjust(int item, int dir) {
         break;
     }
     case MI_CTRL_RESET:      pc_keybindings_reset(); pc_settings_reset_controllers(); break;
+    case MI_FRUSTUM_CULL:    g_pc_settings.frustum_cull ^= 1; break;
+    case MI_CULL_Z_MARGIN: {
+        int v = g_pc_settings.frustum_cull_z_margin + dir * 10;
+        if (v < 0) v = 0; if (v > 200) v = 200;
+        g_pc_settings.frustum_cull_z_margin = v;
+        break;
+    }
+    case MI_CULL_MAX_DISTANCE: {
+        /* 0 = uncapped; stepped caps so you can see culling in-game (lower = stricter). */
+        static const int caps[] = {
+            0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000,
+            1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000
+        };
+        int cur = 0;
+        for (int i = 0; i < (int)(sizeof caps / sizeof caps[0]); i++)
+            if (caps[i] == g_pc_settings.frustum_cull_max_distance) {
+                cur = i;
+                break;
+            }
+        cur += dir;
+        if (cur < 0) cur = (int)(sizeof caps / sizeof caps[0]) - 1;
+        if (cur >= (int)(sizeof caps / sizeof caps[0])) cur = 0;
+        g_pc_settings.frustum_cull_max_distance = caps[cur];
+        break;
+    }
+    case MI_SHADOW_QUALITY: {
+        /* Cycle quality high→low: All → player+NPC → player only → off */
+        static const int order[] = {0, 3, 1, 2};
+        int cur = 0;
+        int i;
+        for (i = 0; i < 4; i++) {
+            if (order[i] == g_pc_settings.shadow_quality) {
+                cur = i;
+                break;
+            }
+        }
+        cur += dir;
+        while (cur < 0) {
+            cur += 4;
+        }
+        while (cur > 3) {
+            cur -= 4;
+        }
+        g_pc_settings.shadow_quality = order[cur];
+        break;
+    }
+    case MI_REDUCE_ACRE_DRAW: {
+        int v = g_pc_settings.reduce_acre_draw + dir;
+        if (v < 0) v = 2;
+        if (v > 2) v = 0;
+        g_pc_settings.reduce_acre_draw = v;
+        break;
+    }
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT && dir == 1) {
             ctrl_capture_idx = item - MI_KB_BASE;
@@ -694,7 +786,7 @@ static void menu_process_input(void) {
 /* ---- Draw: FPS counter (top-right corner) ---- */
 static void draw_fps(float cw, float ch, float pad) {
     char line1[32], line2[32];
-    if (g_pc_fps_target > 0 && g_pc_settings.fps_target != 7)
+    if (g_pc_fps_target > 0 && g_pc_settings.fps_target != 6)
         snprintf(line1, sizeof(line1), "%.1f/%d FPS", ov_fps, g_pc_fps_target);
     else
         snprintf(line1, sizeof(line1), "%.1f FPS", ov_fps);
@@ -749,21 +841,24 @@ static void draw_menu(float cw, float ch, float pad) {
     ov_string("SETTINGS", title_x, ty, cw, ch, 1, 1, 1, 1);
     ty += row_h;
 
-    /* Tab bar — draw all tabs, highlight active one */
+    /* Tab bar — justified: distribute remaining width as equal gaps between tabs */
     {
-        int tab_col_w = cols / TAB_COUNT;
+        int total_lbl = 0;
+        for (int t = 0; t < TAB_COUNT; t++)
+            total_lbl += (int)strlen(tab_labels[t]);
+        float gap_w = (cols - total_lbl) * cw / (float)(TAB_COUNT - 1);
+        float tab_x = tx;
         for (int t = 0; t < TAB_COUNT; t++) {
-            float tab_x = tx + t * tab_col_w * cw;
             const char* lbl = tab_labels[t];
             int lbl_len = (int)strlen(lbl);
-            float lbl_x = tab_x + ((tab_col_w - lbl_len) / 2) * cw;
             if (t == s_active_tab) {
-                ov_string(lbl, lbl_x, ty, cw, ch, 1, 1, 0.3f, 1);
-                ov_quad(tab_x, ty + ch, tab_col_w * cw - pad, 2.0f,
+                ov_string(lbl, tab_x, ty, cw, ch, 1, 1, 0.3f, 1);
+                ov_quad(tab_x, ty + ch, lbl_len * cw, 2.0f,
                         BG_U, BG_V, BG_U, BG_V, 1, 1, 0.3f, 1);
             } else {
-                ov_string(lbl, lbl_x, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+                ov_string(lbl, tab_x, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
             }
+            tab_x += lbl_len * cw + gap_w;
         }
         ty += row_h + pad;
     }

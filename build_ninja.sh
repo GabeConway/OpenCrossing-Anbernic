@@ -15,9 +15,15 @@
 #                                   cmake libsdl2-dev:armhf
 #   Pass --armhf flag: ./build_pc.sh --armhf
 #
+# Linux AArch64 (64-bit ARM):
+#   Prerequisites: sudo dpkg --add-architecture arm64 && sudo apt update
+#                  sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+#                                   cmake libsdl2-dev:arm64
+#   Pass --arm64 flag: ./build_pc.sh --arm64
+#
 # Usage:
-#   1. ./build_pc.sh [--armhf]
-#   2. Place your disc image (.ciso/.iso/.gcm) in pc/build32/bin/rom/
+#   1. ./build_pc.sh [--armhf|--arm64]
+#   2. Place your disc image (.ciso/.iso/.gcm) in pc/build32/bin/rom/ (or build64/)
 #   3. Run: pc/build32/bin/AnimalCrossing[.exe]
 
 set -e
@@ -28,6 +34,7 @@ USE_GLES=""
 for arg in "$@"; do
     case "$arg" in
         --armhf) ARCH="armhf" ;;
+        --arm64) ARCH="arm64" ;;
         --gles)  USE_GLES="-DPC_USE_GLES=ON" ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
@@ -46,7 +53,11 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/pc/build32"
+if [ "$ARCH" = "arm64" ]; then
+    BUILD_DIR="$SCRIPT_DIR/pc/build64"
+else
+    BUILD_DIR="$SCRIPT_DIR/pc/build32"
+fi
 BIN_DIR="$BUILD_DIR/bin"
 
 mkdir -p "$BUILD_DIR"
@@ -77,11 +88,36 @@ elif [ "$ARCH" = "armhf" ]; then
         export PKG_CONFIG=arm-linux-gnueabihf-pkg-config
     fi
 
-    if [ ! -f Makefile ]; then
+    if [ ! -f CMakeCache.txt ]; then
         echo "=== Configuring CMake (Linux ARMhf 32-bit) ==="
         cmake .. -G"Ninja" \
             -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-arm-linux-gnueabihf.cmake" \
 			-DCMAKE_PREFIX_PATH=/usr/opt/sdl2-armhf \
+            $USE_GLES
+    fi
+    echo "=== Building ==="
+    ninja
+
+elif [ "$ARCH" = "arm64" ]; then
+    # --- Linux AArch64 (cross-compile from x86_64) ---
+
+    # Help pkg-config find arm64 libraries on multiarch hosts.
+    for dir in \
+        /usr/lib/aarch64-linux-gnu/pkgconfig \
+        /usr/lib/pkgconfig; do
+        if [ -d "$dir" ]; then
+            export PKG_CONFIG_PATH="$dir:${PKG_CONFIG_PATH:-}"
+        fi
+    done
+
+    if command -v aarch64-linux-gnu-pkg-config &>/dev/null; then
+        export PKG_CONFIG=aarch64-linux-gnu-pkg-config
+    fi
+
+    if [ ! -f CMakeCache.txt ]; then
+        echo "=== Configuring CMake (Linux AArch64 64-bit) ==="
+        cmake .. -G "Ninja" \
+            -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-aarch64-linux-gnu.cmake" \
             $USE_GLES
     fi
     echo "=== Building ==="

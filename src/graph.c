@@ -397,7 +397,7 @@ extern void graph_proc(void* arg) {
             {
                 double ticks_per_visual;
                 int ticks, t;
-                if (g_pc_settings.fps_target == 7) {
+                if (g_pc_settings.fps_target == 6) {
                     /* Dynamic: arbitrary fps, use exact ratio (accumulator handles fractions) */
                     ticks_per_visual = (g_pc_fps_target > 0) ? 60.0 / (double)g_pc_fps_target : 1.0;
                 } else {

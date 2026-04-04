@@ -1,5 +1,6 @@
 #include "m_field_info.h"
 
+#include "pc_settings.h"
 #include "m_scene_table.h"
 #include "m_random_field.h"
 #include "m_common_data.h"
@@ -1092,45 +1093,51 @@ extern void mFI_BGDisplayListRefresh(xyz_t wpos) {
         }
     }
 
-    mFI_WhereisInBlock(&where_bitfield, wpos);
+    if (g_pc_settings.reduce_acre_draw < 2) {
+        mFI_WhereisInBlock(&where_bitfield, wpos);
 
-    /* Check if the acres to the immediate left or right should be displayed */
-    nearest_bx = bx - 1;
-    if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, bz)) {
-        mFI_BGDispMake(&disp_bitfield, nearest_bx, bz);
-    } else {
-        nearest_bx = bx + 1;
-        if (((where_bitfield >> 2) & 1) != 0 && mFI_BlockCheck(nearest_bx, bz)) {
-            mFI_BGDispMake(&disp_bitfield, nearest_bx, bz);
-        }
-    }
-
-    nearest_bz = bz - 1;
-    if (((where_bitfield >> 3) & 1) != 0 && mFI_BlockCheck(bx, nearest_bz)) {
-        mFI_BGDispMake(&disp_bitfield, bx, nearest_bz); /* display acre immediately above */
-
+        /* Check if the acres to the immediate left or right should be displayed */
         nearest_bx = bx - 1;
-        if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
-            mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre above and to the left */
+        if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, bz)) {
+            mFI_BGDispMake(&disp_bitfield, nearest_bx, bz);
         } else {
             nearest_bx = bx + 1;
-            if (((where_bitfield >> 2) & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
-                mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre above and to the right */
+            if (((where_bitfield >> 2) & 1) != 0 && mFI_BlockCheck(nearest_bx, bz)) {
+                mFI_BGDispMake(&disp_bitfield, nearest_bx, bz);
             }
         }
-    } else {
-        nearest_bz = bz + 1;
 
-        if (((where_bitfield >> 5) & 1) != 0 && mFI_BlockCheck(bx, nearest_bz)) {
-            mFI_BGDispMake(&disp_bitfield, bx, nearest_bz); /* display acre immediately below */
+        nearest_bz = bz - 1;
+        if (((where_bitfield >> 3) & 1) != 0 && mFI_BlockCheck(bx, nearest_bz)) {
+            mFI_BGDispMake(&disp_bitfield, bx, nearest_bz); /* display acre immediately above */
 
-            nearest_bx = bx - 1;
-            if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
-                mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre below and to the left */
-            } else {
-                nearest_bx = bx + 1;
-                if (((where_bitfield >> 2) & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
-                    mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre below and to the right */
+            if (g_pc_settings.reduce_acre_draw == 0) {
+                nearest_bx = bx - 1;
+                if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
+                    mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre above and to the left */
+                } else {
+                    nearest_bx = bx + 1;
+                    if (((where_bitfield >> 2) & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
+                        mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre above and to the right */
+                    }
+                }
+            }
+        } else {
+            nearest_bz = bz + 1;
+
+            if (((where_bitfield >> 5) & 1) != 0 && mFI_BlockCheck(bx, nearest_bz)) {
+                mFI_BGDispMake(&disp_bitfield, bx, nearest_bz); /* display acre immediately below */
+
+                if (g_pc_settings.reduce_acre_draw == 0) {
+                    nearest_bx = bx - 1;
+                    if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
+                        mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre below and to the left */
+                    } else {
+                        nearest_bx = bx + 1;
+                        if (((where_bitfield >> 2) & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
+                            mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre below and to the right */
+                        }
+                    }
                 }
             }
         }

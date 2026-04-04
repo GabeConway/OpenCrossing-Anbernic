@@ -20,6 +20,7 @@
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_platform.h"
+#include "pc_settings.h"
 #endif
 
 #ifdef MUST_MATCH
@@ -265,7 +266,26 @@ static void Actor_draw(GAME_PLAY* play, ACTOR* actor) {
 
     /* Draw shadow */
     if (actor->shape_info.shadow_proc != NULL) {
+        int skip_shadow = FALSE;
+#ifdef TARGET_PC
+        {
+            int q = g_pc_settings.shadow_quality;
+
+            if (q < 0 || q > 3) {
+                q = 0;
+            }
+            if (q == 2) {
+                skip_shadow = TRUE;
+            } else if (q == 1) {
+                skip_shadow = (actor->part != ACTOR_PART_PLAYER);
+            } else if (q == 3) {
+                skip_shadow = (actor->part != ACTOR_PART_PLAYER && actor->part != ACTOR_PART_NPC);
+            }
+        }
+#endif
+        if (!skip_shadow) {
         (*actor->shape_info.shadow_proc)(actor, lights, play);
+        }
     }
 }
 
@@ -274,6 +294,20 @@ extern int Actor_draw_actor_no_culling_check(ACTOR* actor) {
 }
 
 extern int Actor_draw_actor_no_culling_check2(ACTOR* actor, xyz_t* camera_pos, f32 camera_w) {
+#ifdef TARGET_PC
+    if (!g_pc_settings.frustum_cull) {
+        /* Culling disabled: original behavior — always visible */
+        (void)camera_pos;
+        (void)camera_w;
+        return TRUE;
+    }
+    /* World-space XZ distance vs player (see pc_settings: margin + optional max cap). */
+    {
+        f32 lim = (f32)pc_settings_cull_limit_xz((float)actor->cull_distance, (float)actor->cull_radius);
+
+        return (actor->player_distance_xz <= lim);
+    }
+#else
     int res = FALSE;
 
     if (-actor->cull_radius < camera_pos->z && camera_pos->z < actor->cull_distance + actor->cull_radius) {
