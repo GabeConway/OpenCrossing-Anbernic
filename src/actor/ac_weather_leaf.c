@@ -7,6 +7,7 @@
 #include "m_malloc.h"
 #include "m_player_lib.h"
 #include "sys_matrix.h"
+#include "pc_settings.h"
 
 extern Gfx ef_otiba01_setmode[];
 
@@ -42,6 +43,12 @@ static int aWeatherLeaf_DecideMakeLeafCount(ACTOR* actor, GAME* game) {
 static void aWeatherLeaf_make(ACTOR* actor, GAME* game) {
     WEATHER_ACTOR* weather = (WEATHER_ACTOR*)actor;
     GAME_PLAY* play = (GAME_PLAY*)game;
+
+    int pq = g_pc_settings.particle_quality;
+    if (pq == 0) return;
+    if (pq == 1 && (game->frame_counter & 24) != 0) return;
+    if (pq == 2 && (game->frame_counter &  8) == 0) return;
+    if (pq == 3 && (game->frame_counter & 24) == 0) return;
 
     aWeather_Priv* priv;
     f32 x, z;

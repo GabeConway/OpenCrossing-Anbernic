@@ -40,6 +40,7 @@ PCSettings g_pc_settings = {
     .frustum_cull_max_distance = 0,
     .shadow_quality         = 0,
     .reduce_acre_draw       = 0,
+    .particle_quality       = 4,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -120,7 +121,10 @@ static const char* DEFAULT_SETTINGS =
     "shadow_quality = 0\n"
     "\n"
     "# Acre background draw: 0=full (adjacent), 1=cross (orthogonal only), 2=current acre only\n"
-    "reduce_acre_draw = 0\n";
+    "reduce_acre_draw = 0\n"
+    "\n"
+    "# Weather effect quality: 0=off, 1=25%, 2=50%, 3=75%, 4=full\n"
+    "particle_quality = 4\n";
 
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
@@ -200,6 +204,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 3) g_pc_settings.shadow_quality = val;
     } else if (strcmp(key, "reduce_acre_draw") == 0) {
         if (val >= 0 && val <= 2) g_pc_settings.reduce_acre_draw = val;
+    } else if (strcmp(key, "particle_quality") == 0) {
+        if (val >= 0 && val <= 4) g_pc_settings.particle_quality = val;
     }
 }
 
@@ -286,6 +292,9 @@ void pc_settings_save(void) {
     fprintf(f, "\n");
     fprintf(f, "# Acre background draw: 0=full (adjacent), 1=cross (orthogonal only), 2=current acre only\n");
     fprintf(f, "reduce_acre_draw = %d\n", g_pc_settings.reduce_acre_draw);
+    fprintf(f, "\n");
+    fprintf(f, "# Weather effect quality: 0=off, 1=25%%, 2=50%%, 3=75%%, 4=full\n");
+    fprintf(f, "particle_quality = %d\n", g_pc_settings.particle_quality);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
 }

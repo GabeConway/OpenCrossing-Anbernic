@@ -1,6 +1,7 @@
 #include "ac_weather_rain.h"
 
 #include "m_common_data.h"
+#include "pc_settings.h"
 #include "m_rcp.h"
 #include "m_field_info.h"
 #include "m_malloc.h"
@@ -56,6 +57,12 @@ static void aWeatherRain_make(ACTOR* actor, GAME* game) {
     WEATHER_ACTOR* weather = (WEATHER_ACTOR*)actor;
 
     f32 x, y, z;
+
+    int pq = g_pc_settings.particle_quality;
+    if (pq == 0) return;
+    if (pq == 1 && (game->frame_counter & 24) != 0) return;
+    if (pq == 2 && (game->frame_counter &  8) == 0) return;
+    if (pq == 3 && (game->frame_counter & 24) == 0) return;
 
     count = aWeatherRain_DecideMakeRainCount(actor);
     pos = weather->pos;
