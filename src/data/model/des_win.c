@@ -126,7 +126,12 @@ Vtx des_win_v[] = {
 #endif
 
 #ifdef TARGET_PC
-u8 des_win_before[0x20];
+/* On GC this was a precompiled GX binary state-setup list. On PC it is
+ * executed as an N64 display list by emu64, so it must end with ENDDL
+ * or execution falls through into adjacent BSS memory. */
+Gfx des_win_before[] = {
+    gsSPEndDisplayList(),
+};
 #else
 u8 des_win_before[] = {
 #include "assets/des_win_before.inc"

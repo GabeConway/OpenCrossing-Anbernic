@@ -3921,6 +3921,8 @@ void emu64::dl_G_LOADTLUT() {
 
                 if (tlut != nullptr) {
                     while (count != 0) {
+                        if (tlut_name >= NUM_TLUTS) break;
+                        if (count < 16) break; /* prevent u16 wrap-around infinite loop */
                         tlut_addresses[tlut_name] = (void*)addr;
                         GXInitTlutObj(&this->tlut_objs[tlut_name], tlut, GX_TL_RGB5A3, count);
                         GXLoadTlut(&this->tlut_objs[tlut_name], tlut_name);
@@ -5320,7 +5322,7 @@ void emu64::dl_G_BRANCH_Z() {
     EMU64_WARNF("gsSPBranchLessZraw(%s, %d, 0x%08x),", this->segchk(this->rdpHalf_1), (this->gfx.words.w0 / 2) & 0x7FF,
                 this->gfx.words.w1);
 
-    this->gfx_p = (Gfx*)((int)this->work_ptr - sizeof(Gfx));
+    this->gfx_p = (Gfx*)((uintptr_t)this->work_ptr - sizeof(Gfx));
     /* Translation: gsSPBranchLessZraw isn't implemented yet */
     this->Printf0("gsSPBranchLessZrawはまだインプリメントされていません\n");
 }
@@ -5531,7 +5533,8 @@ void emu64::dl_G_MOVEWORD() {
             EMU64_LOGF("gsMoveWd(%d, %d, %d), /* ### what */", moveword->index, moveword->offset, moveword->data);
 
             this->num_unknown_cmds++;
-            this->Printf0("未知の命令に出くわした\n"); /* Translation: Came across an unknown command */
+            this->Printf0("未知の命令に出くわした [MOVEWORD index=0x%02X offset=0x%02X data=0x%08X]\n",
+                          moveword->index, moveword->offset, mw_data);
         } break;
     }
 }
@@ -5671,7 +5674,8 @@ void emu64::dl_G_MOVEMEM() {
                         ((movemem->length >> 3) + 1) * 8, movemem->index, movemem->offset);
 
             this->num_unknown_cmds++;
-            this->Printf0("未知の命令に出くわした\n"); /* Came across an unknown command */
+            this->Printf0("未知の命令に出くわした [MOVEMEM index=0x%02X offset=0x%02X]\n",
+                          movemem->index, movemem->offset);
             break;
         }
     }
