@@ -3286,14 +3286,14 @@ void emu64::dirty_check(int tile, int n_tiles, int do_texture_matrix) {
             EmuLight* l = &this->lights[i];
             GXLightObj light_obj;
             GXInitLightPos(&light_obj, l->position.x, l->position.y, l->position.z);
-            GXInitLightDir(&light_obj, 0.0f, 0.0f, 0.0f);
-            GXInitLightAttn(&light_obj, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f);
-
             if (l->attenuation.kc) {
                 GXInitLightDir(&light_obj, 1.0f, 0.0f, 0.0f);
                 GXInitLightAttn(&light_obj, 0.0f, 0.0f, 0.0f,                           /* a */
                                 l->attenuation.kc, l->attenuation.k1, l->attenuation.kq /* k */
                 );
+            } else {
+                GXInitLightDir(&light_obj, 0.0f, 0.0f, 0.0f);
+                GXInitLightAttn(&light_obj, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
             }
 
             GXInitLightColor(&light_obj, l->color.color);
@@ -5808,10 +5808,8 @@ u32 emu64::emu64_taskstart_r(Gfx* dl_p) {
         EMU64_INFOF("%08x:", this->gfx_p);
         this->gfx = *this->gfx_p;
         this->gfx_cmd = this->gfx.dma.cmd;
-        this->dl_history[this->dl_history_start++] = this->gfx_p;
-        if (this->dl_history_start >= DL_HISTORY_COUNT) {
-            this->dl_history_start = 0;
-        }
+        this->dl_history[this->dl_history_start & (DL_HISTORY_COUNT - 1)] = this->gfx_p;
+        this->dl_history_start = (this->dl_history_start + 1) & (DL_HISTORY_COUNT - 1);
 
         this->work_ptr = nullptr;
 

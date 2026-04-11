@@ -474,10 +474,10 @@ list(FILTER PC_CXX_SOURCES INCLUDE REGEX "\\.cpp$")
 # warnings from decomp headers (types.h, gfxprint.h, OSRtc.h, libultra.h) that we can't modify.
 set(PC_WARN_SUPPRESS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-comment;-Wno-unused-function;-Wno-builtin-declaration-mismatch")
 set_source_files_properties(${PC_C_SOURCES}
-    PROPERTIES COMPILE_OPTIONS "-std=gnu11;-Wall;-Wextra;${PC_WARN_SUPPRESS}"
+    PROPERTIES COMPILE_OPTIONS "-O2;-std=gnu11;-Wall;-Wextra;${PC_WARN_SUPPRESS}"
 )
 set_source_files_properties(${PC_CXX_SOURCES}
-    PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;${PC_WARN_SUPPRESS};-fpermissive"
+    PROPERTIES COMPILE_OPTIONS "-O2;-Wall;-Wextra;${PC_WARN_SUPPRESS};-fpermissive"
 )
 
 # =============================================================================
