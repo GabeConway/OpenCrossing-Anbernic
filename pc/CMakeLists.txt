@@ -42,9 +42,25 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
 # =============================================================================
+# Build info (user who ran cmake/make)
+# =============================================================================
+if(DEFINED ENV{USER})
+    set(BUILD_USER "$ENV{USER}")
+elseif(DEFINED ENV{USERNAME})
+    set(BUILD_USER "$ENV{USERNAME}")
+else()
+    execute_process(COMMAND whoami OUTPUT_VARIABLE BUILD_USER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT BUILD_USER)
+        set(BUILD_USER "unknown")
+    endif()
+endif()
+message(STATUS "Build user: ${BUILD_USER}")
+
+# =============================================================================
 # Compiler definitions
 # =============================================================================
 add_compile_definitions(
+    BUILD_USER="${BUILD_USER}"
     TARGET_PC
     VERSION=0
     F3DEX_GBI_2

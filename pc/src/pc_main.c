@@ -430,6 +430,7 @@ extern void ac_entry(void);
 extern int boot_main(int argc, const char** argv);
 
 int main(int argc, char* argv[]) {
+    fprintf(stderr, "[PC] Build: %s %s  User: %s\n", __DATE__, __TIME__, BUILD_USER);
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: AnimalCrossing [options]\n");

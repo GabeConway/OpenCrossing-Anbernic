@@ -343,7 +343,7 @@ static void Player_actor_request_proc_index_fromSwing_net(ACTOR* actor, GAME* ga
 static void Player_actor_main_Swing_net(ACTOR* actor, GAME* game) {
     int end_flag;
     f32 frame_calc;
-    u32 label;
+    ACTOR* label;
     int hit_check = Player_actor_HitBGCheck_Swing_net(actor, game, (ACTOR**)&label);
     int check_type = Player_actor_CatchSomethingCheck_Swing_net(actor);
 
