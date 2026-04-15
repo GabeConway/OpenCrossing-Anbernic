@@ -39,6 +39,10 @@ compile_commands.json
 # For saving work files into (like IDB)
 temp/
 
+# Discord webhook URL (keep private)
+.discord_webhook
+
+
 # Ignore the N64 SDK headers since we download them
 # NOTE: include/PR/gbi.h and include/PR/ultratypes.h are force-tracked
 # (git add -f) because they have TARGET_PC modifications for LE bitfields.
