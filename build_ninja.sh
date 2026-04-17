@@ -35,6 +35,7 @@ for arg in "$@"; do
     case "$arg" in
         --armhf) ARCH="armhf" ;;
         --arm64) ARCH="arm64" ;;
+        --amd64) ARCH="amd64" ;;
         --gles)  USE_GLES="-DPC_USE_GLES=ON" ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
@@ -55,6 +56,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ "$ARCH" = "arm64" ]; then
     BUILD_DIR="$SCRIPT_DIR/pc/build64"
+elif [ "$ARCH" = "amd64" ]; then
+    BUILD_DIR="$SCRIPT_DIR/pc/buildamd64"
 else
     BUILD_DIR="$SCRIPT_DIR/pc/build32"
 fi
@@ -123,6 +126,29 @@ elif [ "$ARCH" = "arm64" ]; then
     echo "=== Building ==="
     ninja
 
+elif [ "$ARCH" = "amd64" ]; then
+    # --- Linux x86_64 native 64-bit ---
+    # On multiarch hosts both amd64 and arm64 GL/SDL2 may be present;
+    # pin every library path to the x86_64 tree so CMake can't grab arm64 ones.
+    export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
+    if command -v x86_64-linux-gnu-pkg-config &>/dev/null; then
+        export PKG_CONFIG=x86_64-linux-gnu-pkg-config
+    fi
+    if [ ! -f CMakeCache.txt ]; then
+        echo "=== Configuring CMake (Linux x86_64 64-bit) ==="
+        cmake .. -G "Ninja" \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu \
+            -DSDL2_DIR=/usr/lib/x86_64-linux-gnu/cmake/SDL2 \
+            -DSDL2_INCLUDE_DIR=/usr/include/SDL2 \
+            -DOPENGL_gl_LIBRARY=/usr/lib/x86_64-linux-gnu/libGL.so.1 \
+            -DOPENGL_glx_LIBRARY=/usr/lib/x86_64-linux-gnu/libGLX.so.0 \
+            $USE_GLES
+    fi
+    echo "=== Building ==="
+    ninja
+
 else
     # --- Linux native 32-bit ---
     # Detect arch from the compiler target (uname -m reports host kernel in chroots)
@@ -179,10 +205,10 @@ echo ""
 echo "=== Build complete! ==="
 echo ""
 echo "Place your Animal Crossing disc image (.ciso/.iso/.gcm) in:"
-echo "  pc/build32/bin/rom/"
+echo "  $BIN_DIR/rom/"
 echo ""
 if [ "$PLATFORM" = "mingw32" ]; then
-    echo "Run: pc/build32/bin/AnimalCrossing.exe"
+    echo "Run: $BIN_DIR/AnimalCrossing.exe"
 else
-    echo "Run: ./pc/build32/bin/AnimalCrossing"
+    echo "Run: $BIN_DIR/AnimalCrossing"
 fi

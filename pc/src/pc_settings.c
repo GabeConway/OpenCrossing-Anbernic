@@ -41,6 +41,8 @@ PCSettings g_pc_settings = {
     .shadow_quality         = 0,
     .reduce_acre_draw       = 0,
     .particle_quality       = 4,
+    .disable_resetti        = 0,
+    .nes_aspect             = 1,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -206,6 +208,10 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 2) g_pc_settings.reduce_acre_draw = val;
     } else if (strcmp(key, "particle_quality") == 0) {
         if (val >= 0 && val <= 4) g_pc_settings.particle_quality = val;
+    } else if (strcmp(key, "disable_resetti") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.disable_resetti = val;
+    } else if (strcmp(key, "nes_aspect") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.nes_aspect = val;
     }
 }
 
@@ -295,8 +301,19 @@ void pc_settings_save(void) {
     fprintf(f, "\n");
     fprintf(f, "# Weather effect quality: 0=off, 1=25%%, 2=50%%, 3=75%%, 4=full\n");
     fprintf(f, "particle_quality = %d\n", g_pc_settings.particle_quality);
+    fprintf(f, "\n");
+    fprintf(f, "[Gameplay]\n");
+    fprintf(f, "# Disable Mr. Resetti: 0 = normal, 1 = disable\n");
+    fprintf(f, "disable_resetti = %d\n", g_pc_settings.disable_resetti);
+    fprintf(f, "\n");
+    fprintf(f, "# NES emulator aspect ratio: 0 = stretch to fullscreen, 1 = 4:3 pillarbox\n");
+    fprintf(f, "nes_aspect = %d\n", g_pc_settings.nes_aspect);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
+}
+
+int pc_settings_get_nes_aspect(void) {
+    return g_pc_settings.nes_aspect;
 }
 
 void pc_settings_reset_controllers(void) {

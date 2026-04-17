@@ -93,7 +93,7 @@ static void pc_audio_callback(void* userdata, Uint8* stream, int len) {
 
     int mv = g_pc_settings.master_volume; /* 0-100 */
     for (int i = 0; i < copy; i++) {
-        s32 sample = (s32)ring_buffer[(rp + i) & RING_BUF_MASK] >> 1;
+        s32 sample = (s32)ring_buffer[(rp + i) & RING_BUF_MASK];
         out[i] = (s16)(sample * mv / 100);
     }
     if (copy < total_samples) {

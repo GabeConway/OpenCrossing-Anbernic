@@ -35,7 +35,12 @@ typedef struct {
     int shadow_quality;         /* 0=all actors+world decals, 1=player only, 2=off (no shadows), 3=player+NPC */
     int reduce_acre_draw;       /* 0=full (up to 4 adjacent), 1=cross (orthogonal only), 2=current acre only */
     int particle_quality;       /* 0=off, 1=25%, 2=50%, 3=75%, 4=full */
+    int disable_resetti;  /* 0=normal (Resetti appears on reset), 1=disable reset penalty */
+    int nes_aspect;       /* NES emulator aspect: 0=fullscreen stretch, 1=4:3 pillarbox (default) */
 } PCSettings;
+
+/* Accessor for TUs that can't include pc_settings.h */
+int pc_settings_get_nes_aspect(void);
 
 extern PCSettings g_pc_settings;
 

@@ -71,6 +71,9 @@ enum {
     MI_SHADOW_QUALITY,
     MI_REDUCE_ACRE_DRAW,
     MI_PARTICLE_QUALITY,
+    MI_PRELOAD_TEXTURES,
+    MI_DISABLE_RESETTI,
+    MI_NES_ASPECT,
     MI_KB_BASE,
     MI_COUNT = MI_KB_BASE + KB_COUNT,
 };
@@ -102,6 +105,9 @@ static const char* menu_labels[MI_COUNT] = {
     [MI_SHADOW_QUALITY]     = "Shadow Quality",
     [MI_REDUCE_ACRE_DRAW]   = "Acre Draw",
     [MI_PARTICLE_QUALITY]   = "Weather effects",
+    [MI_PRELOAD_TEXTURES]   = "Preload Textures",
+    [MI_DISABLE_RESETTI]    = "Disable Resetti",
+    [MI_NES_ASPECT]         = "NES Aspect",
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: NULL, handled via pc_keybinding_label() */
 };
 
@@ -143,6 +149,9 @@ static const int menu_item_tab[MI_COUNT] = {
     [MI_SHADOW_QUALITY]     = TAB_PERF,
     [MI_REDUCE_ACRE_DRAW]   = TAB_PERF,
     [MI_PARTICLE_QUALITY]   = TAB_PERF,
+    [MI_PRELOAD_TEXTURES]   = TAB_PERF,
+    [MI_DISABLE_RESETTI]    = TAB_DEBUG,
+    [MI_NES_ASPECT]         = TAB_VIDEO,
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: handled by item_tab() helper below */
 };
 
@@ -244,6 +253,15 @@ static void menu_get_value(int item, char* buf, int sz) {
         snprintf(buf, sz, "%s", pnames[pq]);
         break;
     }
+    case MI_PRELOAD_TEXTURES: {
+        static const char* ptnames[] = {"Off", "On", "On+Cache"};
+        int pt = g_pc_settings.preload_textures;
+        if (pt < 0 || pt > 2) pt = 0;
+        snprintf(buf, sz, "%s", ptnames[pt]);
+        break;
+    }
+    case MI_DISABLE_RESETTI: snprintf(buf, sz, "%s", g_pc_settings.disable_resetti ? "ON" : "OFF"); break;
+    case MI_NES_ASPECT:      snprintf(buf, sz, "%s", g_pc_settings.nes_aspect ? "4:3" : "Stretch"); break;
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT) {
             int kb_idx = item - MI_KB_BASE;
@@ -429,6 +447,15 @@ static void menu_adjust(int item, int dir) {
         g_pc_settings.particle_quality = v;
         break;
     }
+    case MI_PRELOAD_TEXTURES: {
+        int v = g_pc_settings.preload_textures + dir;
+        if (v < 0) v = 2;
+        if (v > 2) v = 0;
+        g_pc_settings.preload_textures = v;
+        break;
+    }
+    case MI_DISABLE_RESETTI: g_pc_settings.disable_resetti ^= 1; break;
+    case MI_NES_ASPECT:      g_pc_settings.nes_aspect ^= 1; break;
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT && dir == 1) {
             ctrl_capture_idx = item - MI_KB_BASE;

@@ -279,13 +279,17 @@ static void swap_Anmplmail(Anmplmail_c* pm) {
     swap_lbRTC_ymd(&pm->date);
 }
 
-static void swap_Anmmem(Anmmem_c* mem, pc_bswap_dir_t dir) {
+static void swap_Anmmem(Anmmem_c* mem, pc_bswap_dir_t dir, int is_island) {
     swap_PersonalID(&mem->memory_player_id);
     swap_lbRTC_time(&mem->last_speak_time);
-    /* Swap both union interpretations (overlapping but self-inverse) */
-    swap16(&mem->memuni.land.id);
-    swap32(&mem->memuni.island.check);
-    swap16(&mem->memuni.island.have_bitfield);
+    /* memuni is a union: land (name[8]+id) vs island (check+have_bitfield).
+     * The island fields overlap land.name — only swap them for island animals. */
+    if (is_island) {
+        swap32(&mem->memuni.island.check);
+        swap16(&mem->memuni.island.have_bitfield);
+    } else {
+        swap16(&mem->memuni.land.id);
+    }
     swap64(&mem->saved_town_tune);
     repack_u8_11111_3((u8*)&mem->letter_info, dir);
     swap_Anmplmail(&mem->letter);
@@ -300,7 +304,7 @@ static void swap_Animal(Animal_c* anm, pc_bswap_dir_t dir, int is_island) {
     swap_AnmPersonalID(&anm->id);
 
     for (i = 0; i < ANIMAL_MEMORY_NUM; i++) {
-        swap_Anmmem(&anm->memories[i], dir);
+        swap_Anmmem(&anm->memories[i], dir, is_island);
     }
 
     swap_mQst_contest(&anm->contest_quest, dir);
@@ -1015,4 +1019,11 @@ u16 pc_checksum_be(const u8* data, u32 size, u16 old_checksum) {
     /* Two's complement: subtract old_checksum (included in sum), negate */
     raw = (u16)((sum - old_checksum) & 0xFFFF);
     return (u16)((~raw + 1) & 0xFFFF);
+}
+
+void pc_save_bswap_foreigner(mCD_foreigner_c* f, pc_bswap_dir_t dir) {
+    swap16(&f->checksum);
+    swap_Private(&f->priv, dir);
+    swap_Animal(&f->remove_animal, dir, 0);
+    swap16(&f->copy_protect);
 }

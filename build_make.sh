@@ -28,6 +28,7 @@ USE_GLES=""
 for arg in "$@"; do
     case "$arg" in
         --armhf) ARCH="armhf" ;;
+        --amd64) ARCH="amd64" ;;
         --gles)  USE_GLES="-DPC_USE_GLES=ON" ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
@@ -46,7 +47,11 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/pc/build32"
+if [ "$ARCH" = "amd64" ]; then
+    BUILD_DIR="$SCRIPT_DIR/pc/buildamd64"
+else
+    BUILD_DIR="$SCRIPT_DIR/pc/build32"
+fi
 BIN_DIR="$BUILD_DIR/bin"
 
 mkdir -p "$BUILD_DIR"
@@ -60,6 +65,20 @@ if [ "$PLATFORM" = "mingw32" ]; then
     fi
     echo "=== Building ==="
     mingw32-make -j$(nproc)
+
+elif [ "$ARCH" = "amd64" ]; then
+    # --- Linux x86_64 native 64-bit ---
+    export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}"
+    if [ ! -f Makefile ]; then
+        echo "=== Configuring CMake (Linux x86_64 64-bit) ==="
+        cmake .. -G "Unix Makefiles" \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DSDL2_DIR=/usr/lib/x86_64-linux-gnu/cmake/SDL2 \
+            $USE_GLES
+    fi
+    echo "=== Building ==="
+    make -j$(nproc)
 
 elif [ "$ARCH" = "armhf" ]; then
     # --- Linux ARMhf (cross-compile from x86_64) ---
@@ -142,10 +161,10 @@ echo ""
 echo "=== Build complete! ==="
 echo ""
 echo "Place your Animal Crossing disc image (.ciso/.iso/.gcm) in:"
-echo "  pc/build32/bin/rom/"
+echo "  $BIN_DIR/rom/"
 echo ""
 if [ "$PLATFORM" = "mingw32" ]; then
-    echo "Run: pc/build32/bin/AnimalCrossing.exe"
+    echo "Run: $BIN_DIR/AnimalCrossing.exe"
 else
-    echo "Run: ./pc/build32/bin/AnimalCrossing"
+    echo "Run: $BIN_DIR/AnimalCrossing"
 fi
