@@ -26,6 +26,14 @@ static void second_game_main(GAME* game) {
     sound_ok = 2;
   }
 
+#ifdef TARGET_PC
+  /* Audio device may be unavailable (e.g. ALSA failure). After a timeout,
+   * force sound_ok=2 so the game proceeds rather than hanging forever. */
+  if (sound_ok != 2 && frame_count > 120) {
+    sound_ok = 2;
+  }
+#endif
+
   if (sound_ok == 2) {
     Na_Restart();
   }
