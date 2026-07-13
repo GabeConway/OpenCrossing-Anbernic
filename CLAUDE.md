@@ -30,6 +30,7 @@ Load the relevant file before working in its area:
 | `kb/build-test.md` | Building (flags! colima gotcha), harness, CI/release/packaging |
 | `kb/game.md` | Touching decomp code, emu64, saves, settings enums, texture packs |
 | `kb/history.md` | Why things are the way they are; decisions log |
+| `kb/issues.md` | Open bugs with leads, resolved-issue patterns |
 
 Keep kb/ files updated when the facts change — they are the project memory.
 

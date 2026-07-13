@@ -23,7 +23,10 @@ CONFDIR="$GAMEDIR/conf"
 mkdir -p "$CONFDIR" "$GAMEDIR/rom"
 
 cd "$GAMEDIR"
-> "$GAMEDIR/log.txt" && exec > >(tee "$GAMEDIR/log.txt") 2>&1
+: > "$GAMEDIR/log.txt"
+# Plain redirect: the previous tee process-substitution silently dropped
+# stdout on the device shell, truncating log.txt at early init.
+exec >> "$GAMEDIR/log.txt" 2>&1
 
 # First-run settings tuned for 720x480 handheld (Mali-G31): fullscreen,
 # no MSAA, vsync on, dynamic FPS target. The in-game settings menu can

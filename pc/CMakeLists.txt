@@ -531,6 +531,17 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx_texture.c
     PROPERTIES COMPILE_OPTIONS "-O3;-std=gnu11;-Wall;-Wextra;${PC_WARN_SUPPRESS}"
 )
 
+# emu64 (the game's N64->GX graphics-command engine) dominates per-frame game
+# CPU time. Optimize just these TUs while the rest of the decomp stays at the
+# crash-safe default (see the CMAKE_*_FLAGS_RELEASE note near the top).
+# -fno-strict-aliasing matches the global decomp expectations.
+# DEVICE-TEST GATE: any change here needs a full new-game intro on hardware.
+set_source_files_properties(
+    "${DECOMP_ROOT}/src/static/libforest/emu64/emu64.c"
+    "${DECOMP_ROOT}/src/static/libforest/emu64/emu64_utility.c"
+    PROPERTIES COMPILE_OPTIONS "${DECOMP_C_WARN_FLAGS};-O2;-fno-strict-aliasing;-fwrapv;-fno-delete-null-pointer-checks;-fno-lifetime-dse;-fno-aggressive-loop-optimizations;-fno-strict-overflow"
+)
+
 # =============================================================================
 # Windows resource file (sets process name in Task Manager)
 # =============================================================================
