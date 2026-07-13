@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gameList>
+  <game>
+    <path>./Animal Crossing.sh</path>
+    <name>Animal Crossing</name>
+    <desc>Native ARM port of the Animal Crossing (GameCube) decompilation. Runs the original game code directly on the handheld - no emulator. Requires your own USA disc image.</desc>
+    <releasedate>20260713T000000</releasedate>
+    <developer>Nintendo (decompilation by ACreTeam)</developer>
+    <publisher>animal-crossing-anbernic project</publisher>
+    <genre>Simulation</genre>
+    <image>./acgc/cover.png</image>
+  </game>
+</gameList>
