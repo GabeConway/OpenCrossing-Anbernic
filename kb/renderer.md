@@ -37,12 +37,21 @@ calls the GameCube GX API; these files implement it on GL/GLES.
   + sampler state). Pure-state setters just compare their g_gx fields.
 - Quads draw via a static quad→triangle index buffer (GL_ELEMENT_ARRAY);
   everything else via glDrawArrays. One VAO/VBO bound forever.
-- **Streaming VBO (2026-07-13)**: 6MB buffer (PC_GX_STREAM_VERTS=128k),
-  batches append at a running offset (glBufferSubData), attrib pointers
-  rebase to the batch start (`pc_gx_set_attrib_base`; indices/first stay
-  0-based), orphan only on wrap. Anything adding draw paths must go
-  through the same offset/rebase or rebase to 0 first. Env
-  PC_NO_STREAM_VBO=1 falls back to per-flush glBufferData orphan.
+- **Streaming VBO (2026-07-13, v2)**: 6MB buffer (PC_GX_STREAM_VERTS=128k),
+  batches append at a running offset, orphan only on wrap. Upload via
+  glMapBufferRange(WRITE|INVALIDATE_RANGE|UNSYNCHRONIZED) with SubData
+  fallback (PC_STREAM_SUBDATA=1 forces it). Draws use
+  glDrawElementsBaseVertex / glDrawArrays(first) so attrib pointers are
+  NEVER respecified on GLES3.2 drivers; pre-3.2 falls back to
+  `pc_gx_set_attrib_base` rebasing. First 2000 flushes poll glGetError
+  and auto-drop to the legacy per-flush-orphan path (with log line) on
+  any error. WARNING: v1 (SubData + per-batch attrib respec) rendered
+  fine on Mesa but SILENTLY black-screened the Mali blob — do not
+  reintroduce per-draw glVertexAttribPointer churn. Anything adding draw
+  paths must pass draw_base through the same mechanism.
+  PC_NO_STREAM_VBO=1 forces legacy. Device-verified but throughput-
+  neutral (~30µs/draw is blob dispatch overhead) — reduce draw count
+  instead (kb/perf.md #13).
 
 ## Shader system details
 

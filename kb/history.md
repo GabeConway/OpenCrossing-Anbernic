@@ -30,6 +30,17 @@
 - **2026-07-13** — Perf pass 2 (the -O0 discovery + -O2/NEON flags, NEON
   decoders, decode budget, draw-call merging), CI release workflow,
   noob-friendly README, BUILDING.md, kb/ knowledge split.
+- **2026-07-13 (later)** — Perf pass 3 shipped as **v0.2.0** (GX state
+  dedup, per-program uniform shadowing, dynamic-fps upward probe, seed
+  regrown to 101 configs). Post-release: streaming VBO (P3) v1
+  black-screened the Mali blob (SubData + per-batch attrib respec —
+  silent, fine on Mesa); v2 rework (glMapBufferRange UNSYNC + BaseVertex
+  draws + glGetError probe with auto-fallback) device-verified. Lesson:
+  Mali blob tolerates zero per-draw attrib-pointer churn; always ship a
+  runtime kill switch + self-healing fallback with renderer experiments.
+  Measurement across passes: per-draw cost pinned at ~30µs regardless of
+  buffer strategy → future perf work targets draw COUNT. README gained
+  the H700 "likely working devices" table.
 
 ## Standing decisions
 

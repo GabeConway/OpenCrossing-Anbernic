@@ -147,6 +147,7 @@ is line-buffered, so future device logs show the crash context.
 ## Runtime triage switches (launcher env vars)
 
 - PC_NO_STREAM_VBO=1 — disable streaming VBO (per-flush orphan fallback)
+- PC_STREAM_SUBDATA=1 — streaming VBO uploads via glBufferSubData not map
 - PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe
 - PC_NO_UNIFORM_SHADOW=1 — disable per-program uniform value shadowing
 - PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)

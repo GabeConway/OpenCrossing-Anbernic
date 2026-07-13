@@ -6,16 +6,18 @@
   test of v0.2.0): overall range is 60↔30 depending on scene; steady areas
   hold 55-60, acre-streaming walks dip to ~30 worst case. Long-term goal:
   60 stable / most of the time (kb/perf.md "Current state").
-  v0.2.0-log verdict (2026-07-13): per-draw GL cost **29.5µs/draw**
-  (unchanged from P1's 29.3 — P2 uniform shadowing didn't move it, so
-  the cost is glBufferData orphan + draw dispatch). EVERY sub-35fps run
-  is a 487-578-draw scene at gl 18-19ms — real load, no governor locks
-  left. ~550 draws × 29.5µs ≈ 16ms of gl per frame = the whole 60fps
-  budget. **P3 (one big VBO with per-frame offset accumulation, fewer/
-  larger driver calls) is THE lever for the 30fps dips** — halving
-  per-draw cost would lift the heavy scenes to ~45. Other levers:
-  per-TU -O2 on loader/decompression TUs (264 work stutters, avg 42ms),
-  iso read-ahead.
+  Where it stands after P1-P3 (2026-07-13): per-draw GL cost is
+  ~30µs/draw and did NOT move with P2 (uniform shadowing) or P3
+  (streaming VBO, device-verified working) — it is raw draw-dispatch
+  overhead in the Mali blob. Every sub-35fps run is a 487-578-draw scene
+  (~550 × 30µs ≈ 16ms gl = whole 60fps budget); no governor locks left.
+  **NEXT LEVER (not yet approved): reduce draw COUNT** — convert
+  triangle strips/fans to indexed triangles at accumulation time so they
+  merge with triangle batches (strips/fans never merge today; see
+  GXBegin merge rules in kb/renderer.md). Measure strip/fan share of
+  draws first (add a per-primitive draw counter to the PERF line).
+  Other levers: per-TU -O2 on loader/decompression TUs (264 work
+  stutters, avg 42ms), iso read-ahead.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
