@@ -1,0 +1,6 @@
+FROM debian:bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ cmake make pkg-config \
+    libsdl2-dev libgles-dev \
+    xvfb xauth libgl1-mesa-dri libegl1 libgl1 \
+    && rm -rf /var/lib/apt/lists/*

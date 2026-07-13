@@ -6,10 +6,16 @@
 typedef s32 OSPriority;
 
 /* data symbols */
+#ifndef __APPLE__
+/* c_keyframe.c's gnu89 `inline` definitions also emit out-of-line copies;
+ * GNU ld resolves the clash via --allow-multiple-definition (these stubs win
+ * by link order). Mach-O ld64 has no such escape hatch, so on macOS we omit
+ * the stubs and let the real out-of-line functions carry the symbols. */
 unsigned char cKF_Animation_R_getDataTable[4] = {0};
 unsigned char cKF_Animation_R_getFixedTable[4] = {0};
 unsigned char cKF_Animation_R_getFlagTable[4] = {0};
 unsigned char cKF_Animation_R_getKeyTable[4] = {0};
+#endif
 
 char _e_data = 0;
 char _f_rodata = 0;

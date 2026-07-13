@@ -559,7 +559,7 @@ else()
     target_link_libraries(ac_pc OpenGL::GL dl pthread m)
 endif()
 
-if(NOT WIN32)
+if(NOT WIN32 AND NOT APPLE)
     # Hide game's operator new/delete from shared libraries. On Linux, ELF symbol
     # interposition causes SDL/Mesa/ALSA threads to use JKRHeap's allocator which
     # isn't thread-safe and crashes. This version script keeps them binary-local.
@@ -571,7 +571,9 @@ endif()
 # Decomp headers define functions as bare `inline` (not `static inline`). In gnu89
 # mode each TU may emit an out-of-line copy → multiple definition errors on older ld.
 # GCC 13/x86 ld is lenient; GCC 10/ARM ld is strict. Allow duplicates like x86 does.
-target_link_options(ac_pc PRIVATE "LINKER:--allow-multiple-definition")
+if(NOT APPLE)
+    target_link_options(ac_pc PRIVATE "LINKER:--allow-multiple-definition")
+endif()
 
 set_target_properties(ac_pc PROPERTIES
     OUTPUT_NAME "AnimalCrossing"
