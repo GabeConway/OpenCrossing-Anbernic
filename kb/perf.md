@@ -30,12 +30,21 @@
 
 ## -O2 regression (IMPORTANT)
 
--O2 on decomp game code caused a wild-pointer crash loop on device from
-frame 1 (log: "CRASH #N in game frame ... addr=0xDC08093A", black screen
-with music). The UB-guard flags don't cover everything the decomp relies
-on. Game code is pinned at **-O1** in CMAKE_C(XX)_FLAGS_RELEASE; pc/
-platform sources keep per-source -O2/-O3. Do not raise game code past -O1
-without device-testing a full intro (KK Slider → train → town arrival).
+-O2 on decomp game code: wild-pointer crash loop on device from frame 1
+(log: "CRASH #N in game frame ... addr=0xDC08093A", black screen with
+music). -O1: hard SIGBUS on the intro train scene. Game code is therefore
+pinned at **no -O** in CMAKE_C(XX)_FLAGS_RELEASE; pc/ platform sources keep
+per-source -O2/-O3. Do not raise game-code optimization without device-
+testing a full new-game intro (KK Slider → train → town arrival).
+SIGBUS is now caught by the crash-recovery handler (pc_main.c) and stdout
+is line-buffered, so future device logs show the crash context.
+
+## Runtime triage switches (launcher env vars)
+
+- PC_NO_DRAW_MERGE=1 — disable GXBegin draw-call merging
+- PC_NO_NEON_DECODE=1 — scalar texture decoders
+- PC_NO_DECODE_BUDGET=1 — decode every texture the frame it's requested
+- PC_NO_SHADER_CACHE=1 — disable shader binary disk cache + seed warmup
 
 ## Measuring
 

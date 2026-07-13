@@ -71,7 +71,7 @@ static void pc_signal_handler(int sig, siginfo_t* info, void* ucontext) {
     (void)ucontext;
     if (pc_active_jmpbuf != NULL) {
         pc_last_crash_addr = (unsigned int)(uintptr_t)info->si_addr;
-        pc_last_crash_data_addr = (sig == SIGSEGV) ?
+        pc_last_crash_data_addr = (sig == SIGSEGV || sig == SIGBUS) ?
             (unsigned int)(uintptr_t)info->si_addr : 0;
         jmp_buf* buf = pc_active_jmpbuf;
         pc_active_jmpbuf = NULL;
@@ -104,6 +104,9 @@ void pc_crash_protection_init(void) {
         sigaction(SIGSEGV, &sa, NULL);
         sigaction(SIGILL, &sa, NULL);
         sigaction(SIGFPE, &sa, NULL);
+        /* armv7: unaligned LDRD/STRD/VFP accesses raise SIGBUS, not SIGSEGV.
+         * Catch it so game-frame recovery + crash logging work on device. */
+        sigaction(SIGBUS, &sa, NULL);
 #endif
         installed = 1;
     }
@@ -435,6 +438,10 @@ extern void ac_entry(void);
 extern int boot_main(int argc, const char** argv);
 
 int main(int argc, char* argv[]) {
+    /* Line-buffer stdout even when redirected to log.txt: on a hard crash
+     * (SIGBUS/SIGSEGV outside the recovery jmpbuf) block-buffered output is
+     * lost, which previously hid everything after early init from the log. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
     fprintf(stderr, "[PC] Build: %s %s  User: %s\n", __DATE__, __TIME__, BUILD_USER);
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {

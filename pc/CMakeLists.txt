@@ -18,14 +18,17 @@ set(CMAKE_CXX_STANDARD 17)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
-# NOTE: these overrides previously carried no -O level at all, so everything
-# not covered by a per-source COMPILE_OPTIONS -O2 (i.e. all decomp game code)
-# built unoptimized. -O1 for game code: -O2 caused wild-pointer crash loops
-# on device (game frame CRASH spam at 0xDC08093A from boot) — decomp code
-# relies on more UB than the guard flags cover. pc/ platform sources keep
-# their per-source -O2/-O3. If -O1 also misbehaves, drop this back to no -O.
-set(CMAKE_C_FLAGS_RELEASE "-O1 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
-set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+# Decomp game code optimization level. History on the armhf device build:
+#   -O2 → wild-pointer CRASH loop from boot (recovered per frame, black
+#         screen with music);
+#   -O1 → hard SIGBUS on the intro train scene (unaligned LDRD/VFP access
+#         the decomp's pointer-punning provokes once GCC merges loads);
+#   no -O (default) → stable. Decomp code stays UNOPTIMIZED until specific
+# translation units are proven safe; pc/ platform sources are unaffected
+# (they carry per-source -O2/-O3 below). Do not raise this without device-
+# testing a full new-game intro (KK Slider → train → town arrival).
+set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
 
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)

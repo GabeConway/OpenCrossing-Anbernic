@@ -298,6 +298,13 @@ static inline u16 read_be16(const u8* p) {
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #include <arm_neon.h>
+
+/* PC_NO_NEON_DECODE=1 routes all decoders to the scalar paths (triage) */
+static int pc_tex_no_neon(void) {
+    static int v = -1;
+    if (v < 0) v = (getenv("PC_NO_NEON_DECODE") != NULL);
+    return v;
+}
 /* Exact lookup tables matching the scalar truncating expansions.
  * Note: bit replication (v<<3)|(v>>2) does NOT match v*255/31 for all v
  * (e.g. v=4: 33 vs 32), so tables keep NEON output byte-identical. */
@@ -352,6 +359,7 @@ static void decode_I4(const u8* src, u8* dst, int w, int h) {
 static void decode_I8(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 7) / 8, bh = (h + 3) / 4;
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    if (!pc_tex_no_neon()) {
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
             if ((bx + 1) * 8 <= w && (by + 1) * 4 <= h) {
@@ -379,6 +387,7 @@ static void decode_I8(const u8* src, u8* dst, int w, int h) {
         }
     }
     return;
+    }
 #endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
@@ -422,6 +431,7 @@ static void decode_IA4(const u8* src, u8* dst, int w, int h) {
 static void decode_IA8(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 3) / 4, bh = (h + 3) / 4;
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    if (!pc_tex_no_neon()) {
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
             if ((bx + 1) * 4 <= w && (by + 1) * 4 <= h) {
@@ -453,6 +463,7 @@ static void decode_IA8(const u8* src, u8* dst, int w, int h) {
         }
     }
     return;
+    }
 #endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
@@ -475,6 +486,7 @@ static void decode_IA8(const u8* src, u8* dst, int w, int h) {
 static void decode_RGB565(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 3) / 4, bh = (h + 3) / 4;
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    if (!pc_tex_no_neon()) {
     {
         uint8x8x4_t t5;
         t5.val[0] = vld1_u8(&s_exp5_tbl[0]);
@@ -518,6 +530,7 @@ static void decode_RGB565(const u8* src, u8* dst, int w, int h) {
         }
         return;
     }
+    }
 #endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
@@ -542,6 +555,7 @@ static void decode_RGB565(const u8* src, u8* dst, int w, int h) {
 static void decode_RGB5A3(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 3) / 4, bh = (h + 3) / 4;
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    if (!pc_tex_no_neon()) {
     {
         uint8x8x4_t t5;
         t5.val[0] = vld1_u8(&s_exp5_tbl[0]);
@@ -596,6 +610,7 @@ static void decode_RGB5A3(const u8* src, u8* dst, int w, int h) {
             }
         }
         return;
+    }
     }
 #endif
     for (int by = 0; by < bh; by++) {
@@ -982,9 +997,12 @@ void GXLoadTexObj(void* obj, u32 id) {
         }
     }
 
-    /* per-frame decode budget (tiny textures exempt: cheap and often UI) */
-    if (image_ptr && width > 0 && height > 0 && width <= 1024 && height <= 1024 &&
-        width * height > 32 * 32) {
+    /* per-frame decode budget (tiny textures exempt: cheap and often UI).
+     * PC_NO_DECODE_BUDGET=1 disables (triage). */
+    static int s_no_budget = -1;
+    if (s_no_budget < 0) s_no_budget = (getenv("PC_NO_DECODE_BUDGET") != NULL);
+    if (!s_no_budget && image_ptr && width > 0 && height > 0 &&
+        width <= 1024 && height <= 1024 && width * height > 32 * 32) {
         if (pc_frame_counter != s_decode_frame) {
             s_decode_frame = pc_frame_counter;
             s_decode_count = 0;
