@@ -133,8 +133,28 @@ works, but expect a performance cost on handheld GPUs.
 
 ## Save data
 
-Saves use the standard GCI format in `save/`, fully compatible with Dolphin.
-Drop a Dolphin GCI export there to import an existing town.
+Saves use the standard GCI format, fully compatible with Dolphin (both
+directions). They live next to the game binary:
+
+```
+ports/ac-gc/save/card_a/   ← memory card Slot A (the game saves here)
+ports/ac-gc/save/card_b/   ← memory card Slot B
+```
+
+### Managing saves
+
+Close the game first, then manage the `.gci` files directly (from the device's
+file manager, or with the SD card in a computer):
+
+- **Back up a town** — copy the `.gci` file(s) out of `save/card_a/`
+  somewhere safe. Do this before updating to a new release.
+- **Delete a town / start fresh** — delete the `.gci` file(s) in
+  `save/card_a/`. The game creates a new save on next boot, like a fresh
+  memory card.
+- **Import an existing town** — drop a Dolphin GCI export into
+  `save/card_a/`.
+- **Restore a backup** — copy the backed-up `.gci` back into `save/card_a/`,
+  replacing what's there.
 
 ## Credits
 
