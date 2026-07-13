@@ -116,13 +116,23 @@ is line-buffered, so future device logs show the crash context.
     every 120 render frames the EMA halves to re-test headroom; genuine
     load re-converges in ~4 frames. Kill switch PC_NO_FPS_PROBE=1.
 
-13. **Streaming VBO (P3)** (2026-07-13, awaiting device test): per-flush
-    `glBufferData` orphan+upload replaced by one 6MB VBO (128k verts);
-    each batch appends at a running offset via glBufferSubData, attrib
-    pointers rebase to the batch start (no BaseVertex dependency — works
-    on any GLES3), orphan only on wrap. Targets the measured 29.5µs/draw
-    dispatch cost (kb/issues.md). Kill switch: PC_NO_STREAM_VBO=1
-    (restores per-flush orphan path).
+13. **Streaming VBO (P3)** (2026-07-13): per-flush `glBufferData`
+    orphan+upload replaced by one 6MB VBO (128k verts), batches append at
+    a running offset, orphan only on wrap. Targets the measured
+    29.5µs/draw dispatch cost (kb/issues.md).
+    **v1 BLACK-SCREENED on device** (game alive, overlay drew, scene
+    black, no logged errors; rendered fine under Mesa) — glBufferSubData
+    + per-batch attrib-pointer respec upsets the Mali blob silently.
+    **v2 (5886c75, awaiting device test)** uses the Mali happy path:
+    glMapBufferRange(WRITE|INVALIDATE_RANGE|UNSYNCHRONIZED) upload,
+    glDrawElementsBaseVertex/glDrawArrays(first) so attribs are never
+    respecified (pre-3.2 fallback: rebase), and a 2000-flush glGetError
+    probe that logs + auto-drops to the legacy path on any error. Boot
+    log prints "[PC/GX] streaming VBO on (upload=..., base_vertex=...)".
+    Switches: PC_NO_STREAM_VBO=1 legacy path, PC_STREAM_SUBDATA=1 forces
+    SubData upload for on-device A/B. Screenshot harness for Mesa visual
+    checks: Xvfb -fbdir XWD dump, see scratchpad shot.sh pattern (worth
+    porting into harness/ if needed again).
 
 ## Runtime triage switches (launcher env vars)
 
