@@ -2,12 +2,23 @@
 
 ## Open
 
-- **FPS dips to ~30 walking fast across acre grids** (2026-07-13 device
-  test of v0.2.0): overall range is 60↔30 depending on scene; steady areas
-  hold 55-60, acre-streaming walks dip to ~30 worst case. Long-term goal:
-  60 stable / most of the time (kb/perf.md "Current state"). Next levers:
-  P3 VBO orphan decision after re-measure, per-TU -O2 on loader/
-  decompression TUs, iso read-ahead (the zero-draw stall class).
+- **FPS below 60 in heavy scenes** (updated 2026-07-13 post-P4, v0.3.0):
+  P4 (strip conversion + whole-batch CPU cull, kb/perf.md #14)
+  DEVICE-VERIFIED: avg 56.4 fps, median 59.3, 78% ≥55; worst sustained
+  dips 41-44 fps during heaviest acre streaming. **GL is no longer the
+  bottleneck** — gl avg 5.4ms, all 75 gameplay stutters work-dominated
+  (median 24ms, max 114ms), zero gl-dominated. Remaining work to 60
+  stable, in order of expected value:
+  (a) **per-TU -O2 on loader/decompression + m_field/actor TUs** —
+  work-dominated stutters and the 41-44 fps dips are game logic in -O0
+  decomp code (emu64 -O2 template proven safe, kb/perf.md #8);
+  (b) **iso read-ahead thread** — sync SD reads inside work spikes;
+  (c) **CPU pre-transform at accumulation** — matrix loads are 41% of
+  batch breaks and merged=0 all session; pre-transform would let GXBegin
+  merging finally fire (tex breaks 30% remain, so gains capped — measure
+  first). Cull-scan cost at ~500 submitted batches is part of the dip
+  frames; a cheap object-space AABB cache keyed on batch identity could
+  cut it if profiling says so.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
@@ -40,12 +51,14 @@
   code during menu/save load. Leads: add timing counters to pc_dvd_read /
   pc_disc reads, consider read-ahead thread or optimizing the decomp's
   decompression TUs (same per-TU -O2 pattern as emu64).
-  2026-07-13 P1-build log confirms pattern persists: 3 zero-draw stalls,
-  worst 3.2s (work=3222ms, gl≈0, draws=0). Now the top remaining stutter
-  class alongside work-dominated moderate stutters (268 of 345 STUTTER
-  lines were work-dominated; gl-dominated was 74, of which the worst were
-  mid-session shader compiles — seed regrown to 101 configs to kill those,
-  kb/perf.md #12).
+  2026-07-13 P1-build log deep-dive: the 3.2s "stall" is frame 3 of BOOT —
+  vanilla's intentional 2500ms sleep ("ニンテンドー発生タイムラグまで寝てます")
+  plus sound_initial2/init, NOT a gameplay stall. Real gameplay stutter
+  classes: (a) 264 work-dominated moderates (avg 42ms total, 50 above
+  50ms, max 148ms) — game logic in -O0 decomp; lever = per-TU -O2
+  expansion (loader/decompression/m_field TUs); (b) gl-dominated spikes,
+  worst were the 24 mid-session shader compiles — fixed by 101-config
+  seed (kb/perf.md #12).
 
 ## Resolved (keep for pattern-matching)
 

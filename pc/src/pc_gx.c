@@ -180,27 +180,95 @@ static int pc_tex_mtx_id_to_slot(int id) {
     return -1;
 }
 
+/* --- Per-frame batching diagnostics (reset in pc_gx_begin_frame) --- */
+int pc_gx_prim_draws[5];    /* quads, tris, strips, fans, other */
+int pc_gx_merged_batches;
+int pc_gx_culled_draws;
+int pc_gx_flush_reason[18];
+/* Set when a flush actually broke a batch; the next state change (or GXBegin/
+ * viewport/scissor) claims it, attributing the batch break to its cause. */
+static int s_flush_pending_attr = 0;
+
+/* Strip/fan → independent triangles at accumulation time. Strips/fans can
+ * never merge with an open batch (concatenating them would bridge geometry),
+ * so every one is its own draw call — and per-draw dispatch overhead in the
+ * Mali blob is the measured bottleneck (~30µs/draw, kb/perf.md #13).
+ * Converting them to triangle lists as vertices arrive makes them mergeable
+ * with each other and with plain triangle batches. PC_NO_STRIP_CONVERT=1
+ * disables. */
+static int s_strip_convert = 1;
+static int s_conv_active = 0;       /* current begin is a strip/fan being converted */
+static int s_conv_is_fan = 0;
+static int s_conv_src_count = 0;    /* source vertices committed this begin */
+static int s_conv_src_expected = 0;
+static PCGXVertex s_conv_v0, s_conv_v1;
+
+/* Whole-batch CPU frustum cull at flush: PC_NO_BATCH_CULL=1 disables. */
+static int s_batch_cull = 1;
+
+/* Commit g_gx.current_vertex into the batch. Converting batches buffer the
+ * first two source vertices, then emit one triangle per subsequent vertex
+ * (strip winding alternates; fans pivot on the first vertex). */
+static void pc_gx_commit_vertex(void) {
+    if (!s_conv_active) {
+        if (g_gx.current_vertex_idx < PC_GX_MAX_VERTS) {
+            g_gx.vertex_buffer[g_gx.current_vertex_idx] = g_gx.current_vertex;
+            g_gx.current_vertex_idx++;
+        }
+        return;
+    }
+    int i = s_conv_src_count++;
+    if (i == 0) { s_conv_v0 = g_gx.current_vertex; return; }
+    if (i == 1) { s_conv_v1 = g_gx.current_vertex; return; }
+    if (g_gx.current_vertex_idx + 3 <= PC_GX_MAX_VERTS) {
+        PCGXVertex* dst = &g_gx.vertex_buffer[g_gx.current_vertex_idx];
+        /* Strip triangle t = i-2 uses (v[t], v[t+1], v[t+2]); odd t swaps the
+         * first two to preserve winding. Fan always pivots on v0. */
+        if (s_conv_is_fan || (i & 1) == 0) {
+            dst[0] = s_conv_v0;
+            dst[1] = s_conv_v1;
+        } else {
+            dst[0] = s_conv_v1;
+            dst[1] = s_conv_v0;
+        }
+        dst[2] = g_gx.current_vertex;
+        g_gx.current_vertex_idx += 3;
+    }
+    if (s_conv_is_fan) {
+        s_conv_v1 = g_gx.current_vertex;
+    } else {
+        s_conv_v0 = s_conv_v1;
+        s_conv_v1 = g_gx.current_vertex;
+    }
+}
+
 /* Commit pending vertex + flush batch to GL. Used by GXBegin/GXEnd/GXCopyDisp/etc. */
 static void pc_gx_commit_pending_and_flush(void) {
     if (!g_gx.in_begin) return;
-    if (g_gx.vertex_pending && g_gx.current_vertex_idx < PC_GX_MAX_VERTS) {
-        g_gx.vertex_buffer[g_gx.current_vertex_idx] = g_gx.current_vertex;
-        g_gx.current_vertex_idx++;
+    if (g_gx.vertex_pending) {
+        pc_gx_commit_vertex();
         g_gx.vertex_pending = 0;
     }
     g_gx.in_begin = 0;
+    s_conv_active = 0;
     if (g_gx.current_vertex_idx > 0)
         pc_gx_flush_vertices();
 }
 
 /* emu64 omits GXEnd() — flush when expected vertex count is reached so the
- * batch renders with the state it was built with, not subsequent state changes. */
+ * batch renders with the state it was built with, not subsequent state changes.
+ * Converting batches complete on their SOURCE vertex count: emitted count
+ * stays below expected_vertex_count until the last source vertex arrives. */
 void pc_gx_flush_if_begin_complete(void) {
-    if (!g_gx.in_begin || g_gx.expected_vertex_count <= 0) return;
-
-    int submitted = g_gx.current_vertex_idx + (g_gx.vertex_pending ? 1 : 0);
-    if (submitted < g_gx.expected_vertex_count) return;
-
+    if (!g_gx.in_begin) return;
+    int pend = g_gx.vertex_pending ? 1 : 0;
+    if (s_conv_active) {
+        if (s_conv_src_expected <= 0) return;
+        if (s_conv_src_count + pend < s_conv_src_expected) return;
+    } else {
+        if (g_gx.expected_vertex_count <= 0) return;
+        if (g_gx.current_vertex_idx + pend < g_gx.expected_vertex_count) return;
+    }
     pc_gx_commit_pending_and_flush();
 }
 
@@ -218,6 +286,10 @@ int pc_gx_state_dedup = 1;
 int pc_gx_uniform_shadow = 1;
 
 void pc_gx_mark_dirty(unsigned int flag) {
+    if (s_flush_pending_attr) {
+        pc_gx_flush_reason[__builtin_ctz(flag)]++;
+        s_flush_pending_attr = 0;
+    }
     g_gx.dirty |= flag;
     unsigned int m = flag & PC_GX_DIRTY_UNIFORM_MASK;
     while (m) {
@@ -236,6 +308,36 @@ static void pc_gx_dirty_all(void) {
         g_gx.group_gen[b]++;
 }
 
+/* Streaming VBO: instead of orphaning + re-uploading the whole VBO with
+ * glBufferData on every flush (device log: ~29.5µs/draw, ~16ms of gl time
+ * at 550 draws/frame), append each batch at a running offset in one large
+ * buffer, orphaned only on wrap, so the driver never has to allocate or
+ * synchronize per draw. Upload via glMapBufferRange(UNSYNCHRONIZED) with a
+ * glBufferSubData fallback (PC_STREAM_SUBDATA=1 forces it). Draws use
+ * glDrawElementsBaseVertex / glDrawArrays(first) so attrib pointers are
+ * never respecified when the driver has BaseVertex (GLES 3.2 core); older
+ * drivers fall back to rebasing the attrib pointers per batch. The first
+ * ~2000 flushes poll glGetError and drop to the legacy per-flush orphan
+ * path (with a log line) if the driver rejects any of it.
+ * PC_NO_STREAM_VBO=1 forces the legacy path. */
+#define PC_GX_STREAM_VERTS (128 * 1024)  /* 128k verts * 48B = 6MB */
+static int        s_stream_vbo = 1;
+static int        s_stream_subdata = 0;   /* force glBufferSubData upload */
+static int        s_has_base_vertex = 0;
+static int        s_stream_probe = 0;     /* flushes still GL-error-checked */
+static GLsizeiptr s_stream_offset = 0;    /* in vertices */
+static GLsizeiptr s_attrib_base = -1;     /* attrib pointers' current base */
+
+static void pc_gx_set_attrib_base(GLsizeiptr first_vertex) {
+    size_t stride = sizeof(PCGXVertex);
+    size_t base = (size_t)first_vertex * stride;
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)(base + offsetof(PCGXVertex, position)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(base + offsetof(PCGXVertex, normal)));
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)(base + offsetof(PCGXVertex, color0)));
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)(base + offsetof(PCGXVertex, texcoord)));
+    s_attrib_base = first_vertex;
+}
+
 int pc_emu64_frame_cmds = 0;
 int pc_emu64_frame_crashes = 0;
 int pc_emu64_frame_noop_cmds = 0;
@@ -249,6 +351,19 @@ void pc_gx_init(void) {
     memset(&g_gx, 0, sizeof(g_gx));
     pc_gx_state_dedup = (getenv("PC_NO_STATE_DEDUP") == NULL);
     pc_gx_uniform_shadow = (getenv("PC_NO_UNIFORM_SHADOW") == NULL);
+    s_stream_vbo = (getenv("PC_NO_STREAM_VBO") == NULL);
+    s_stream_subdata = (getenv("PC_STREAM_SUBDATA") != NULL);
+    s_strip_convert = (getenv("PC_NO_STRIP_CONVERT") == NULL);
+    s_batch_cull = (getenv("PC_NO_BATCH_CULL") == NULL);
+    printf("[PC/GX] strip convert %s, batch cull %s\n",
+           s_strip_convert ? "on" : "off", s_batch_cull ? "on" : "off");
+    s_has_base_vertex = (glDrawElementsBaseVertex != NULL);
+    s_stream_probe = 0;
+    s_stream_offset = 0;
+    s_attrib_base = -1;
+    if (s_stream_vbo)
+        printf("[PC/GX] streaming VBO on (upload=%s, base_vertex=%d)\n",
+               s_stream_subdata ? "subdata" : "map", s_has_base_vertex);
 
     g_gx.projection_type = GX_PERSPECTIVE;
     g_gx.num_tev_stages = 1;
@@ -312,19 +427,15 @@ void pc_gx_init(void) {
     glBindVertexArray(g_gx.vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_gx.vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, PC_GX_MAX_VERTS * sizeof(PCGXVertex), NULL, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,
+                 (s_stream_vbo ? PC_GX_STREAM_VERTS : PC_GX_MAX_VERTS) * sizeof(PCGXVertex),
+                 NULL, GL_STREAM_DRAW);
 
-    {
-        size_t stride = sizeof(PCGXVertex);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(PCGXVertex, position));
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(PCGXVertex, normal));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(PCGXVertex, color0));
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(PCGXVertex, texcoord));
-    }
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+    pc_gx_set_attrib_base(0);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_gx.ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_index_buf), quad_index_buf, GL_STATIC_DRAW);
@@ -367,6 +478,11 @@ void pc_gx_begin_frame(void) {
     pc_emu64_frame_cull_visible = 0;
     pc_emu64_frame_cull_rejected = 0;
     pc_gx_draw_call_count = 0;
+    memset(pc_gx_prim_draws, 0, sizeof(pc_gx_prim_draws));
+    memset(pc_gx_flush_reason, 0, sizeof(pc_gx_flush_reason));
+    pc_gx_merged_batches = 0;
+    pc_gx_culled_draws = 0;
+    s_flush_pending_attr = 0;
     g_pc_widescreen_stretch = 0;
 
     /* Frameskip: skip all GL state reset on skipped frames */
@@ -485,21 +601,43 @@ void GXBegin(u32 primitive, u32 vtxfmt, u16 nverts) {
      * driver overhead is significant; typical scenes merge many calls. */
     static int s_no_merge = -1;
     if (s_no_merge < 0) s_no_merge = (getenv("PC_NO_DRAW_MERGE") != NULL);
+
+    /* Strip/fan conversion: the batch is built as a triangle list from the
+     * start, so it merges like one. expected_vertex_count tracks EMITTED
+     * vertices (3 per triangle); completion is tracked on source vertices
+     * (s_conv_src_*, see pc_gx_flush_if_begin_complete). */
+    u32 eff_prim = primitive;
+    int conv = 0, conv_fan = 0;
+    if (s_strip_convert &&
+        (primitive == GX_TRIANGLESTRIP || primitive == GX_TRIANGLEFAN)) {
+        conv = 1;
+        conv_fan = (primitive == GX_TRIANGLEFAN);
+        eff_prim = GX_TRIANGLES;
+    }
+    int emit_count = conv ? (nverts >= 3 ? ((int)nverts - 2) * 3 : 0) : (int)nverts;
+
     if (!s_no_merge && g_gx.in_begin && g_gx.dirty == 0 &&
         (g_gx.current_primitive == GX_QUADS || g_gx.current_primitive == GX_TRIANGLES) &&
-        primitive == (u32)g_gx.current_primitive &&
+        eff_prim == (u32)g_gx.current_primitive &&
         vtxfmt == (u32)g_gx.current_vtxfmt &&
         g_gx.expected_vertex_count > 0) {
-        int submitted = g_gx.current_vertex_idx + (g_gx.vertex_pending ? 1 : 0);
-        if (submitted == g_gx.expected_vertex_count &&
-            submitted + (int)nverts <= PC_GX_MAX_VERTS) {
+        int pend = g_gx.vertex_pending ? 1 : 0;
+        int prev_complete = s_conv_active
+            ? (s_conv_src_count + pend == s_conv_src_expected)
+            : (g_gx.current_vertex_idx + pend == g_gx.expected_vertex_count);
+        if (prev_complete &&
+            g_gx.expected_vertex_count + emit_count <= PC_GX_MAX_VERTS) {
             /* Commit the previous batch's pending vertex, extend the batch */
-            if (g_gx.vertex_pending && g_gx.current_vertex_idx < PC_GX_MAX_VERTS) {
-                g_gx.vertex_buffer[g_gx.current_vertex_idx] = g_gx.current_vertex;
-                g_gx.current_vertex_idx++;
+            if (g_gx.vertex_pending) {
+                pc_gx_commit_vertex();
                 g_gx.vertex_pending = 0;
             }
-            g_gx.expected_vertex_count += nverts;
+            g_gx.expected_vertex_count += emit_count;
+            s_conv_active = conv;
+            s_conv_is_fan = conv_fan;
+            s_conv_src_count = 0;
+            s_conv_src_expected = nverts;
+            pc_gx_merged_batches++;
             /* Reset the working vertex exactly like a fresh GXBegin */
             memset(&g_gx.current_vertex, 0, sizeof(PCGXVertex));
             g_gx.current_vertex.color0[0] = 255;
@@ -512,13 +650,21 @@ void GXBegin(u32 primitive, u32 vtxfmt, u16 nverts) {
 
     /* Auto-flush previous batch if GXEnd was omitted (normal on real HW) */
     pc_gx_commit_pending_and_flush();
+    if (s_flush_pending_attr) {
+        pc_gx_flush_reason[16]++;
+        s_flush_pending_attr = 0;
+    }
 
-    g_gx.current_primitive = primitive;
+    g_gx.current_primitive = eff_prim;
     g_gx.current_vtxfmt = vtxfmt;
-    g_gx.expected_vertex_count = nverts;
+    g_gx.expected_vertex_count = emit_count;
     g_gx.current_vertex_idx = 0;
     g_gx.in_begin = 1;
     g_gx.vertex_pending = 0;
+    s_conv_active = conv;
+    s_conv_is_fan = conv_fan;
+    s_conv_src_count = 0;
+    s_conv_src_expected = nverts;
     memset(&g_gx.current_vertex, 0, sizeof(PCGXVertex));
     g_gx.current_vertex.color0[0] = 255;
     g_gx.current_vertex.color0[1] = 255;
@@ -532,10 +678,8 @@ void GXEnd(void) {
 
 void GXPosition3f32(f32 x, f32 y, f32 z) {
     /* Deferred commit: position call commits the previous vertex */
-    if (g_gx.vertex_pending && g_gx.current_vertex_idx < PC_GX_MAX_VERTS) {
-        g_gx.vertex_buffer[g_gx.current_vertex_idx] = g_gx.current_vertex;
-        g_gx.current_vertex_idx++;
-    }
+    if (g_gx.vertex_pending)
+        pc_gx_commit_vertex();
 
     /* Reset vertex — only zero fields that matter (not all 96 bytes).
      * Carry last color forward. Only texcoord[0] is sent to GPU. */
@@ -779,12 +923,57 @@ void pc_gx_fill_uniform_locations(GLuint shader, PCGXUniformLocs* u) {
 /* --- Vertex Flush --- */
 int pc_gx_draw_call_count = 0;
 
+/* Whole-batch CPU frustum cull: object-space AABB of the batch, 8 corners
+ * through the exact transform the vertex shader applies (clip = P * MV * pos).
+ * If all corners are outside the same clip half-space, the whole convex hull
+ * is (the test is linear in homogeneous coords), so nothing rasterizes and
+ * the draw can be skipped entirely — each one saves the full Mali per-draw
+ * dispatch cost. Merged batches share one matrix by construction (merging
+ * requires dirty == 0). Conservative: NaNs and mixed-plane cases draw. */
+static int pc_gx_batch_is_offscreen(int count) {
+    const PCGXVertex* v = g_gx.vertex_buffer;
+    float mn[3], mx[3];
+    mn[0] = mx[0] = v[0].position[0];
+    mn[1] = mx[1] = v[0].position[1];
+    mn[2] = mx[2] = v[0].position[2];
+    for (int i = 1; i < count; i++) {
+        for (int c = 0; c < 3; c++) {
+            float p = v[i].position[c];
+            if (p < mn[c]) mn[c] = p;
+            if (p > mx[c]) mx[c] = p;
+        }
+    }
+    float (*mv)[4] = g_gx.pos_mtx[g_gx.current_mtx];
+    float (*pr)[4] = g_gx.projection_mtx;
+    int outside[6] = {0, 0, 0, 0, 0, 0};
+    for (int ci = 0; ci < 8; ci++) {
+        float ox = (ci & 1) ? mx[0] : mn[0];
+        float oy = (ci & 2) ? mx[1] : mn[1];
+        float oz = (ci & 4) ? mx[2] : mn[2];
+        float e0 = mv[0][0] * ox + mv[0][1] * oy + mv[0][2] * oz + mv[0][3];
+        float e1 = mv[1][0] * ox + mv[1][1] * oy + mv[1][2] * oz + mv[1][3];
+        float e2 = mv[2][0] * ox + mv[2][1] * oy + mv[2][2] * oz + mv[2][3];
+        float cx = pr[0][0] * e0 + pr[0][1] * e1 + pr[0][2] * e2 + pr[0][3];
+        float cy = pr[1][0] * e0 + pr[1][1] * e1 + pr[1][2] * e2 + pr[1][3];
+        float cz = pr[2][0] * e0 + pr[2][1] * e1 + pr[2][2] * e2 + pr[2][3];
+        float cw = pr[3][0] * e0 + pr[3][1] * e1 + pr[3][2] * e2 + pr[3][3];
+        if (cx < -cw) outside[0]++;
+        if (cx >  cw) outside[1]++;
+        if (cy < -cw) outside[2]++;
+        if (cy >  cw) outside[3]++;
+        if (cz < -cw) outside[4]++;
+        if (cz >  cw) outside[5]++;
+    }
+    for (int p = 0; p < 6; p++)
+        if (outside[p] == 8) return 1;
+    return 0;
+}
+
 void pc_gx_flush_vertices(void) {
     int count = g_gx.current_vertex_idx;
     if (count == 0) return;
 
     Uint64 t_flush_start = SDL_GetPerformanceCounter();
-    pc_gx_draw_call_count++;
 
     /* Frameskip: skip all GL work. Leave dirty set — nothing was applied to
      * GL, so clearing it here would drop GL-state changes (depth/blend/cull/
@@ -792,6 +981,29 @@ void pc_gx_flush_vertices(void) {
     if (g_pc_frameskip_active) {
         s_flush_time_acc += SDL_GetPerformanceCounter() - t_flush_start;
         return;
+    }
+
+    /* Offscreen batch: skip the draw AND all state upload. Like frameskip,
+     * dirty stays set so the next surviving flush applies everything. */
+    if (s_batch_cull &&
+        (g_gx.current_primitive == GX_QUADS ||
+         g_gx.current_primitive == GX_TRIANGLES ||
+         g_gx.current_primitive == GX_TRIANGLESTRIP ||
+         g_gx.current_primitive == GX_TRIANGLEFAN) &&
+        pc_gx_batch_is_offscreen(count)) {
+        pc_gx_culled_draws++;
+        s_flush_pending_attr = 1;
+        s_flush_time_acc += SDL_GetPerformanceCounter() - t_flush_start;
+        return;
+    }
+
+    pc_gx_draw_call_count++;
+    switch (g_gx.current_primitive) {
+        case GX_QUADS:         pc_gx_prim_draws[0]++; break;
+        case GX_TRIANGLES:     pc_gx_prim_draws[1]++; break;
+        case GX_TRIANGLESTRIP: pc_gx_prim_draws[2]++; break;
+        case GX_TRIANGLEFAN:   pc_gx_prim_draws[3]++; break;
+        default:               pc_gx_prim_draws[4]++; break;
     }
 
     GLuint shader = pc_gx_tev_get_shader(&g_gx);
@@ -814,8 +1026,32 @@ void pc_gx_flush_vertices(void) {
         }
     }
 
-    /* VAO/VBO stay bound from init. glBufferData orphans + uploads in one call. */
-    glBufferData(GL_ARRAY_BUFFER, count * sizeof(PCGXVertex), g_gx.vertex_buffer, GL_STREAM_DRAW);
+    /* VAO/VBO stay bound from init. */
+    GLsizeiptr draw_base = 0;
+    if (s_stream_vbo) {
+        /* Append at the running offset; orphan only on wrap so the driver
+         * never synchronizes against in-flight draws. */
+        GLsizeiptr bytes = (GLsizeiptr)count * sizeof(PCGXVertex);
+        if (s_stream_offset + count > PC_GX_STREAM_VERTS) {
+            glBufferData(GL_ARRAY_BUFFER, PC_GX_STREAM_VERTS * sizeof(PCGXVertex), NULL, GL_STREAM_DRAW);
+            s_stream_offset = 0;
+        }
+        void* dst = NULL;
+        if (!s_stream_subdata && glMapBufferRange)
+            dst = glMapBufferRange(GL_ARRAY_BUFFER, s_stream_offset * sizeof(PCGXVertex), bytes,
+                                   GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+        if (dst) {
+            memcpy(dst, g_gx.vertex_buffer, bytes);
+            glUnmapBuffer(GL_ARRAY_BUFFER);
+        } else {
+            glBufferSubData(GL_ARRAY_BUFFER, s_stream_offset * sizeof(PCGXVertex), bytes, g_gx.vertex_buffer);
+        }
+        draw_base = s_stream_offset;
+        s_stream_offset += count;
+    } else {
+        /* Legacy: orphan + upload the whole VBO per flush */
+        glBufferData(GL_ARRAY_BUFFER, count * sizeof(PCGXVertex), g_gx.vertex_buffer, GL_STREAM_DRAW);
+    }
 
     /* Upload only dirty state groups */
     if (shader) {
@@ -1116,17 +1352,48 @@ void pc_gx_flush_vertices(void) {
     if (g_gx.current_primitive == GX_QUADS) {
         int num_quads = count / 4;
         int num_indices = num_quads * 6;
-        glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0);
+        if (draw_base == 0 || s_has_base_vertex) {
+            if (s_attrib_base != 0)
+                pc_gx_set_attrib_base(0);
+            if (draw_base == 0)
+                glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0);
+            else
+                glDrawElementsBaseVertex(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0, (GLint)draw_base);
+        } else {
+            /* No BaseVertex (pre-3.2 driver): rebase attrib pointers instead */
+            if (s_attrib_base != draw_base)
+                pc_gx_set_attrib_base(draw_base);
+            glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0);
+        }
         PC_GL_CHECK("glDrawElements");
     } else {
-        glDrawArrays(gl_prim, 0, count);
+        /* glDrawArrays takes the base directly — attribs stay at 0 */
+        if (s_attrib_base != 0)
+            pc_gx_set_attrib_base(0);
+        glDrawArrays(gl_prim, (GLint)draw_base, count);
         PC_GL_CHECK("glDrawArrays");
+    }
+
+    /* Early-session GL-error probe: if the driver rejects any of the
+     * streaming path (some Mali blobs are picky about it), log the error
+     * and drop to the legacy per-flush upload for the rest of the run. */
+    if (s_stream_vbo && s_stream_probe < 2000) {
+        s_stream_probe++;
+        GLenum probe_err = glGetError();
+        if (probe_err != GL_NO_ERROR) {
+            printf("[PC/GX] streaming VBO GL error 0x%04X at flush %d — using legacy path\n",
+                   (unsigned)probe_err, s_stream_probe);
+            s_stream_vbo = 0;
+            if (s_attrib_base != 0)
+                pc_gx_set_attrib_base(0);
+        }
     }
 
     if (g_gx.blend_mode == GX_BM_SUBTRACT)
         glBlendEquation(GL_FUNC_ADD);
 
     g_gx.dirty = 0;
+    s_flush_pending_attr = 1;
 
     s_flush_time_acc += SDL_GetPerformanceCounter() - t_flush_start;
 }
@@ -1331,6 +1598,10 @@ void GXSetViewport(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz) {
         nearz == s_gl_depth_range[0] && farz == s_gl_depth_range[1])
         return;
     pc_gx_flush_if_begin_complete();
+    if (s_flush_pending_attr) {
+        pc_gx_flush_reason[17]++;
+        s_flush_pending_attr = 0;
+    }
     glViewport(gl_x, gl_y, gl_w, gl_h);
 #ifdef PC_USE_GLES
     glDepthRangef(nearz, farz);
@@ -1382,6 +1653,10 @@ void GXSetScissor(u32 left, u32 top, u32 wd, u32 ht) {
         gl_w == s_gl_scissor[2] && gl_h == s_gl_scissor[3])
         return;
     pc_gx_flush_if_begin_complete();
+    if (s_flush_pending_attr) {
+        pc_gx_flush_reason[17]++;
+        s_flush_pending_attr = 0;
+    }
     glEnable(GL_SCISSOR_TEST);
     glScissor(gl_x, gl_y, gl_w, gl_h);
     s_gl_scissor[0] = gl_x;

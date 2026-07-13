@@ -149,6 +149,11 @@ extern int pc_emu64_frame_dl_cmds;
 extern int pc_emu64_frame_cull_visible;
 extern int pc_emu64_frame_cull_rejected;
 extern int pc_gx_draw_call_count;
+extern int pc_gx_prim_draws[5];    /* draws by primitive: quads, tris, strips, fans, other */
+extern int pc_gx_merged_batches;   /* GXBegin calls absorbed into an open batch */
+extern int pc_gx_culled_draws;     /* batches skipped by whole-batch CPU frustum cull */
+extern int pc_gx_flush_reason[18]; /* 0-15 = PC_GX_DIRTY_* bit that broke the batch,
+                                      16 = GXBegin (prim/fmt change), 17 = viewport/scissor */
 
 /* --- Audio --- */
 extern int pc_save_loaded;

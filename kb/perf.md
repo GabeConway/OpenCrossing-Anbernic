@@ -1,11 +1,16 @@
 # Performance knowledge & playbook
 
-## Current state (2026-07-13, v0.2.0)
+## Current state (2026-07-13, post-P4, v0.3.0)
 
-FPS ranges between 60 and 30 depending on what's going on — steady areas
-hold 55-60, heavy moments (walking fast across acre grids while they
-stream in) can dip to ~30 worst case. Long-term goal: 60 fps stable, or
-at least most of the time. Game speed holds ~100% throughout (dynamic fps).
+Device log (P4 build, 183 gameplay PERF samples): **avg 56.4 fps, median
+59.3, 78% of samples ≥55** (v0.2.0: avg 52.4, 63% ≥55, dips to 30).
+Worst sustained dips now 41-44 fps during heaviest acre streaming; user
+reports "~20 fps faster on average" feel. Speed avg 98.4%. Zero crashes,
+zero GL errors. **GL is no longer the bottleneck**: gl avg 5.4ms (was
+9.1), draws avg 114.6 (was 271), and ALL 75 gameplay stutters are
+work-dominated (median 24ms, max 114ms; zero gl-dominated). Remaining
+levers are game-side: per-TU -O2 on loader/decompression TUs, iso
+read-ahead, CPU pre-transform (see #14 findings).
 
 ## Fixed so far (chronological, 2026-07-13)
 
@@ -74,7 +79,12 @@ is line-buffered, so future device logs show the crash context.
 
 10. **Per-program uniform value shadowing** (2026-07-13, P2,
     DEVICE-VERIFIED same day: "slightly better", worst case now ~30 fps
-    during fast acre-grid walking — shipped in v0.2.0): shader switch no longer sets dirty=ALL (was re-uploading every
+    during fast acre-grid walking — shipped in v0.2.0. v0.2.0 log
+    re-measure: per-draw slope UNCHANGED at 29.5µs/draw (was 29.3) —
+    uniform re-uploads were not the per-draw bottleneck; the cost is in
+    glBufferData orphan + draw dispatch itself, i.e. P3 territory. P2
+    kept: correct, zero overhead, and it removes work that would
+    otherwise scale with future shader-switch-heavy content): shader switch no longer sets dirty=ALL (was re-uploading every
     uniform group ~each switch, and switches happen constantly at 500+
     draws/frame). Every real state change bumps a per-group generation
     counter (`pc_gx_mark_dirty`, bits 0-11 = uniform groups); each program
@@ -98,18 +108,90 @@ is line-buffered, so future device logs show the crash context.
     hitches (each a mid-frame Mali compile; the worst gl-dominated stutters,
     e.g. gl=344ms at 31 draws, line up with these). Old 43-key seed is a
     strict subset. Deployed to SD same day. Regrow again whenever logs show
-    mid-session compiles.
+    mid-session compiles. v0.2.0 log: 1 compile all session (was 24), max
+    gameplay stutter 124ms (was 545ms) — verified.
 
 11. **Dynamic-fps upward probe** (2026-07-13, P2.5, DEVICE-VERIFIED same
-    day: no more 30-lock after area loads — shipped in v0.2.0):
+    day; v0.2.0 log confirms: every sub-35fps run sits at 487-578 draws
+    with gl 18-19ms = genuine load; zero lock signatures (no low-fps runs
+    in light scenes) — shipped in v0.2.0):
     governor was bistable — low target ⇒ more logic ticks per measured
     batch ⇒ measured work stays high ⇒ low target self-sustains (device:
     outdoor 30 fps until a house visit reset it to 60). When target < 60,
     every 120 render frames the EMA halves to re-test headroom; genuine
     load re-converges in ~4 frames. Kill switch PC_NO_FPS_PROBE=1.
 
+13. **Streaming VBO (P3)** (2026-07-13): per-flush `glBufferData`
+    orphan+upload replaced by one 6MB VBO (128k verts), batches append at
+    a running offset, orphan only on wrap. Targets the measured
+    29.5µs/draw dispatch cost (kb/issues.md).
+    **v1 BLACK-SCREENED on device** (game alive, overlay drew, scene
+    black, no logged errors; rendered fine under Mesa) — glBufferSubData
+    + per-batch attrib-pointer respec upsets the Mali blob silently.
+    **v2 (5886c75, awaiting device test)** uses the Mali happy path:
+    glMapBufferRange(WRITE|INVALIDATE_RANGE|UNSYNCHRONIZED) upload,
+    glDrawElementsBaseVertex/glDrawArrays(first) so attribs are never
+    respecified (pre-3.2 fallback: rebase), and a 2000-flush glGetError
+    probe that logs + auto-drops to the legacy path on any error. Boot
+    log prints "[PC/GX] streaming VBO on (upload=..., base_vertex=...)".
+    Switches: PC_NO_STREAM_VBO=1 legacy path, PC_STREAM_SUBDATA=1 forces
+    SubData upload for on-device A/B. Screenshot harness for Mesa visual
+    checks: Xvfb -fbdir XWD dump, see scratchpad shot.sh pattern (worth
+    porting into harness/ if needed again).
+    **v2 DEVICE-VERIFIED 2026-07-13**: renders correctly, zero GL errors,
+    no fallback, user reports grids feel smoother. BUT throughput-neutral
+    on early data: per-draw slope ~30.3µs (n=46, was 29.5), heavy scenes
+    still ~35 fps. Per-draw cost is therefore raw draw-dispatch overhead
+    in the Mali blob, not buffer management. Kept for the smoothness
+    (map path avoids driver sync stalls → better 1% lows). CONCLUSION:
+    the next real lever is REDUCING DRAW COUNT, not cheapening draws —
+    top idea: convert strips/fans to indexed triangles at accumulation
+    time so they become mergeable with triangle batches (strips/fans
+    never merge today, see GXBegin merging rules).
+
+14. **P4: strip/fan→triangle conversion + whole-batch CPU cull + batch
+    diagnostics** (2026-07-13, DEVICE-VERIFIED same day, shipped v0.3.0;
+    smoke 2x PASS, Mesa screenshot A/B clean — geometry/winding correct).
+    **Device results**: avg 56.4 fps / median 59.3 / 78% ≥55 (was 52.4 /
+    63%); draws avg 114.6 med 109 (was 271); gl avg 5.4ms (was 9.1);
+    0 crashes, 0 GL errors, no visual regressions reported.
+    **The cull is the win**: avg 286, median 386, max 532 batches culled
+    per frame — 60-80% of submitted batches are fully offscreen (the game
+    submits whole acres; the frustum holds a fraction). Worst dips now
+    41-44 fps at ~500 submitted batches (cull scan + game work, not GL).
+    **merged=0 across the whole session**: GXBegin merging never fires on
+    device — ~90% of surviving batches have a state change in between
+    (breaks: mv=41%, tex=30%, begin=19%, light=4%). Conversion's merge
+    payoff is therefore unrealized until matrix loads stop breaking
+    batches (CPU pre-transform idea); its current value is uniform prim
+    stream + cullable strip geometry.
+    **Slope metric caveat**: gl accumulator now includes the cull scan of
+    culled batches, so µs/draw (~44) is NOT comparable to pre-P4 (29.5).
+    Compare total gl ms instead.
+    (a) GXBegin converts TRIANGLESTRIP/TRIANGLEFAN to independent triangle
+    lists at vertex accumulation (winding-preserving, fan pivots on v0) so
+    they merge like triangle batches — strips/fans never merged before.
+    Kill switch PC_NO_STRIP_CONVERT=1. Completion tracked on SOURCE vertex
+    count (s_conv_src_*), expected_vertex_count now counts EMITTED verts.
+    (b) Whole-batch CPU frustum cull at flush: object-space AABB, 8 corners
+    through exact shader transform (clip = P*MV*pos), homogeneous
+    half-space test (all 8 corners outside same plane ⇒ skip). Culled
+    batches skip draw + ALL uniform upload, dirty stays set (frameskip
+    pattern). Kill switch PC_NO_BATCH_CULL=1. Qemu smoke intro scene:
+    culled 139-159 vs drawn 147-200 per frame (~45% of batches).
+    (c) PERF line extended: per-prim draw counts (q/t/s/f/o), merged=,
+    culled=, and batch-break attribution (breaks: begin/vp/mv/tex/tevc/
+    tevs/light/oth) — first dirty-group set after a real flush claims it.
+    Smoke data: mv (matrix loads) dominates breaks (206-241/frame, ~70%)
+    ⇒ next lever after this: CPU pre-transform of positions at accumulation
+    so matrix changes stop breaking batches (then merging spans objects).
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_STRIP_CONVERT=1 — disable strip/fan→triangle conversion (P4)
+- PC_NO_BATCH_CULL=1 — disable whole-batch CPU frustum cull (P4)
+- PC_NO_STREAM_VBO=1 — disable streaming VBO (per-flush orphan fallback)
+- PC_STREAM_SUBDATA=1 — streaming VBO uploads via glBufferSubData not map
 - PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe
 - PC_NO_UNIFORM_SHADOW=1 — disable per-program uniform value shadowing
 - PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)

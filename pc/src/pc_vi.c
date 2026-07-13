@@ -192,9 +192,22 @@ void VIWaitForRetrace(void) {
                 extern int pc_emu64_frame_cmds, pc_emu64_frame_crashes;
                 double flush_ms = (double)pc_gx_flush_time_us / 1000.0;
                 double texld_ms = (double)pc_gx_texload_time_us / 1000.0;
-                printf("[PERF] %.1f FPS | %.0f%% speed | draws=%d cmds=%d crashes=%d gl=%.1fms tex=%.1fms\n",
-                       render_fps, speed_pct, pc_gx_draw_call_count, pc_emu64_frame_cmds,
-                       pc_emu64_frame_crashes, flush_ms, texld_ms);
+                int rtotal = 0;
+                for (int r = 0; r < 18; r++) rtotal += pc_gx_flush_reason[r];
+                int rother = rtotal - pc_gx_flush_reason[16] - pc_gx_flush_reason[17]
+                           - pc_gx_flush_reason[1] - pc_gx_flush_reason[9]
+                           - pc_gx_flush_reason[2] - pc_gx_flush_reason[3]
+                           - pc_gx_flush_reason[7];
+                printf("[PERF] %.1f FPS | %.0f%% speed | draws=%d (q=%d t=%d s=%d f=%d o=%d) merged=%d culled=%d cmds=%d crashes=%d gl=%.1fms tex=%.1fms | breaks: begin=%d vp=%d mv=%d tex=%d tevc=%d tevs=%d light=%d oth=%d\n",
+                       render_fps, speed_pct, pc_gx_draw_call_count,
+                       pc_gx_prim_draws[0], pc_gx_prim_draws[1], pc_gx_prim_draws[2],
+                       pc_gx_prim_draws[3], pc_gx_prim_draws[4],
+                       pc_gx_merged_batches, pc_gx_culled_draws,
+                       pc_emu64_frame_cmds, pc_emu64_frame_crashes, flush_ms, texld_ms,
+                       pc_gx_flush_reason[16], pc_gx_flush_reason[17],
+                       pc_gx_flush_reason[1], pc_gx_flush_reason[9],
+                       pc_gx_flush_reason[2], pc_gx_flush_reason[3],
+                       pc_gx_flush_reason[7], rother);
             }
 
             fps_start = now;
