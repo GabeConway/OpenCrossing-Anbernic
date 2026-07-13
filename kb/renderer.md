@@ -41,8 +41,15 @@ calls the GameCube GX API; these files implement it on GL/GLES.
 
 ## Shader system details
 
-- Uniforms uploaded per dirty group (PC_GX_DIRTY_* bits). Shader switch sets
-  `dirty = ALL`.
+- Uniforms uploaded per dirty group (PC_GX_DIRTY_* bits). **Uniform value
+  shadowing (2026-07-13)**: shader switch does NOT set dirty=ALL — uniform
+  groups (bits 0-11) carry generation counters bumped on change
+  (`pc_gx_mark_dirty`); each program records last-uploaded gens (tev cache
+  entry `gens[]`, exposed via `pc_gx_tev_last_gens`), flush uploads only
+  mismatches. GL-state groups (bits 12-15) stay on `g_gx.dirty`. Anything
+  touching GL outside the GX layer must call `pc_gx_dirty_all()` (bumps all
+  gens), not just set dirty=ALL. TEXTURES+TEV_STAGES upload/record as one
+  block. Env PC_NO_UNIFORM_SHADOW=1 disables.
 - **Per-program uniform locations**: `PCGXUniformLocs` filled once at link
   (`pc_gx_fill_uniform_locations` in pc_gx.c), stored in the shader cache
   entry; `pc_gx_tev_last_locs` exposes the last-returned program's locs and

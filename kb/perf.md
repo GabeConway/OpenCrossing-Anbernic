@@ -61,8 +61,28 @@ is line-buffered, so future device logs show the crash context.
    g_gx.gl_textures so freed/reissued GL ids can't fool the check.
    Kill switch: PC_NO_STATE_DEDUP=1.
 
+10. **Per-program uniform value shadowing** (2026-07-13, P2, awaiting device
+    test): shader switch no longer sets dirty=ALL (was re-uploading every
+    uniform group ~each switch, and switches happen constantly at 500+
+    draws/frame). Every real state change bumps a per-group generation
+    counter (`pc_gx_mark_dirty`, bits 0-11 = uniform groups); each program
+    (tev cache entry + fallback) records the generation it last uploaded per
+    group; flush uploads only mismatched groups and records them. GL-state
+    groups (depth/colormask/cull/blend, bits 12-15) stay on plain g_gx.dirty
+    — they're global GL state, not per-program. Gens bumped for ALL groups
+    only when GL touched outside GX layer (`pc_gx_dirty_all`: init,
+    restore_after_nes; NES clobbers texture-unit bindings, which ride the
+    TEXTURES group). Eviction path in tev cache_insert resets the slot's gen
+    record. Kill switch: PC_NO_UNIFORM_SHADOW=1 (restores dirty=ALL on
+    switch). Two correctness fixes shipped with it: (a) pc_gx_begin_frame
+    forces depth/color masks for glClear — now DIRTYs DEPTH|COLOR_MASK so a
+    deduped same-value re-set can't leave the forced masks active; (b)
+    frameskip flush no longer clears g_gx.dirty (it applied nothing to GL, so
+    clearing dropped GL-state changes made during skipped frames).
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_UNIFORM_SHADOW=1 — disable per-program uniform value shadowing
 - PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)
 - PC_NO_DRAW_MERGE=1 — disable GXBegin draw-call merging
 - PC_NO_NEON_DECODE=1 — scalar texture decoders

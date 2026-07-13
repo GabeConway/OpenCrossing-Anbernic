@@ -210,6 +210,32 @@ void pc_gx_flush_if_begin_complete(void) {
  * no-ops — no flush, no dirty — letting GXBegin merging span them. */
 int pc_gx_state_dedup = 1;
 
+/* Per-program uniform value shadowing: a shader switch no longer forces
+ * dirty=ALL. Every real state change bumps its group's generation counter
+ * (pc_gx_mark_dirty); each program records the generation it last uploaded,
+ * so a switch only re-uploads groups that changed since that program last
+ * drew. PC_NO_UNIFORM_SHADOW=1 disables. */
+int pc_gx_uniform_shadow = 1;
+
+void pc_gx_mark_dirty(unsigned int flag) {
+    g_gx.dirty |= flag;
+    unsigned int m = flag & PC_GX_DIRTY_UNIFORM_MASK;
+    while (m) {
+        g_gx.group_gen[__builtin_ctz(m)]++;
+        m &= m - 1;
+    }
+}
+
+/* Mark everything dirty AND advance every group generation, so every program
+ * re-uploads. Needed when GL state was touched outside the GX layer (init,
+ * NES emulator) — a plain dirty=ALL wouldn't invalidate the per-program
+ * uploaded-generation records. */
+static void pc_gx_dirty_all(void) {
+    g_gx.dirty = PC_GX_DIRTY_ALL;
+    for (int b = 0; b < PC_GX_UNIFORM_GROUP_COUNT; b++)
+        g_gx.group_gen[b]++;
+}
+
 int pc_emu64_frame_cmds = 0;
 int pc_emu64_frame_crashes = 0;
 int pc_emu64_frame_noop_cmds = 0;
@@ -222,6 +248,7 @@ int pc_emu64_frame_cull_rejected = 0;
 void pc_gx_init(void) {
     memset(&g_gx, 0, sizeof(g_gx));
     pc_gx_state_dedup = (getenv("PC_NO_STATE_DEDUP") == NULL);
+    pc_gx_uniform_shadow = (getenv("PC_NO_UNIFORM_SHADOW") == NULL);
 
     g_gx.projection_type = GX_PERSPECTIVE;
     g_gx.num_tev_stages = 1;
@@ -312,7 +339,7 @@ void pc_gx_init(void) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    g_gx.dirty = PC_GX_DIRTY_ALL;
+    pc_gx_dirty_all();
 }
 
 /* Last GL viewport/scissor actually applied. GXSetViewport/GXSetScissor skip
@@ -351,6 +378,9 @@ void pc_gx_begin_frame(void) {
     /* glClear respects write masks — must enable all before clearing */
     glDepthMask(GL_TRUE);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    /* GL masks now diverge from g_gx state; without this, a game re-set of
+     * the same values would dedup away and leave the forced masks active. */
+    DIRTY(PC_GX_DIRTY_DEPTH | PC_GX_DIRTY_COLOR_MASK);
 #ifdef PC_ENHANCEMENTS
     pc_gx_update_aspect();
     glDisable(GL_SCISSOR_TEST);
@@ -379,7 +409,7 @@ void pc_gx_restore_after_nes(void) {
     glBindVertexArray(g_gx.vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_gx.vbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_gx.ebo);
-    g_gx.dirty = PC_GX_DIRTY_ALL;
+    pc_gx_dirty_all();
     g_gx.current_shader = 0; /* Force shader rebind on next draw */
     pc_gx_invalidate_vp_shadow();
     glEnable(GL_DEPTH_TEST);
@@ -756,14 +786,16 @@ void pc_gx_flush_vertices(void) {
     Uint64 t_flush_start = SDL_GetPerformanceCounter();
     pc_gx_draw_call_count++;
 
-    /* Frameskip: skip all GL work, just clear dirty flags and vertex buffer */
+    /* Frameskip: skip all GL work. Leave dirty set — nothing was applied to
+     * GL, so clearing it here would drop GL-state changes (depth/blend/cull/
+     * masks) made during skipped frames. */
     if (g_pc_frameskip_active) {
-        g_gx.dirty = 0;
         s_flush_time_acc += SDL_GetPerformanceCounter() - t_flush_start;
         return;
     }
 
     GLuint shader = pc_gx_tev_get_shader(&g_gx);
+    unsigned int* prog_gens = pc_gx_uniform_shadow ? pc_gx_tev_last_gens : NULL;
     if (shader && shader != g_gx.current_shader) {
         glUseProgram(shader);
         PC_GL_CHECK("glUseProgram");
@@ -771,7 +803,8 @@ void pc_gx_flush_vertices(void) {
         /* Locations were resolved once at link time by the shader cache;
          * a struct copy replaces ~150 glGetUniformLocation driver calls. */
         g_gx.uloc = *pc_gx_tev_last_locs;
-        g_gx.dirty = PC_GX_DIRTY_ALL;
+        if (!prog_gens)
+            g_gx.dirty = PC_GX_DIRTY_ALL;  /* shadowing off: re-upload all */
         /* Set constant sampler bindings once per shader change */
         {
             GLint sl;
@@ -787,7 +820,21 @@ void pc_gx_flush_vertices(void) {
     /* Upload only dirty state groups */
     if (shader) {
         GLint loc;
-        unsigned int dirty = g_gx.dirty;
+        unsigned int dirty;
+        if (prog_gens) {
+            /* Upload a group iff this program hasn't seen its current
+             * generation — covers state changes AND shader switches, without
+             * a switch re-uploading values the program already holds. */
+            dirty = 0;
+            for (int b = 0; b < PC_GX_UNIFORM_GROUP_COUNT; b++)
+                if (prog_gens[b] != g_gx.group_gen[b]) dirty |= (1u << b);
+            /* Texture bindings and use_texture* upload as one block below —
+             * run and record them together. */
+            if (dirty & (PC_GX_DIRTY_TEXTURES | PC_GX_DIRTY_TEV_STAGES))
+                dirty |= PC_GX_DIRTY_TEXTURES | PC_GX_DIRTY_TEV_STAGES;
+        } else {
+            dirty = g_gx.dirty;
+        }
         #define UL(field) g_gx.uloc.field
 
         if (dirty & PC_GX_DIRTY_PROJECTION) {
@@ -953,6 +1000,12 @@ void pc_gx_flush_vertices(void) {
             loc = UL(fog_start); if (loc >= 0) glUniform1f(loc, g_gx.fog_start);
             loc = UL(fog_end);   if (loc >= 0) glUniform1f(loc, g_gx.fog_end);
             loc = UL(fog_color);  if (loc >= 0) glUniform4fv(loc, 1, g_gx.fog_color);
+        }
+
+        /* Record what this program now holds */
+        if (prog_gens) {
+            for (int b = 0; b < PC_GX_UNIFORM_GROUP_COUNT; b++)
+                if (dirty & (1u << b)) prog_gens[b] = g_gx.group_gen[b];
         }
 
         #undef UL

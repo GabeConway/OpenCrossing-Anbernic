@@ -37,7 +37,13 @@ extern "C" {
 #define PC_GX_DIRTY_CULL        (1u << 14)
 #define PC_GX_DIRTY_BLEND       (1u << 15)
 #define PC_GX_DIRTY_ALL         0xFFFFu
-#define PC_GX_DIRTY_SET(flag) (g_gx.dirty |= (flag))
+/* Bits 0-11 are per-program uniform groups; each carries a generation
+ * counter so programs can skip re-uploading values they already hold
+ * (see pc_gx_flush_vertices). Bits 12-15 are global GL state. */
+#define PC_GX_DIRTY_UNIFORM_MASK  0x0FFFu
+#define PC_GX_UNIFORM_GROUP_COUNT 12
+void pc_gx_mark_dirty(unsigned int flag);
+#define PC_GX_DIRTY_SET(flag) pc_gx_mark_dirty(flag)
 #define DIRTY(flag) PC_GX_DIRTY_SET(flag)
 
 /* --- Vertex buffer --- */
@@ -250,6 +256,10 @@ typedef struct {
     unsigned char array_stride[PC_GX_MAX_ATTR];
 
     unsigned int dirty;
+    /* Generation counter per uniform group, bumped by pc_gx_mark_dirty.
+     * Shader programs record the generation they last uploaded and skip
+     * groups whose values they already hold. */
+    unsigned int group_gen[PC_GX_UNIFORM_GROUP_COUNT];
 
 } PCGXState;
 
@@ -258,6 +268,11 @@ extern PCGXState g_gx;
 /* Redundant GX state sets (same value re-set) skip the batch flush + dirty
  * marking so GXBegin merging can span them. PC_NO_STATE_DEDUP=1 disables. */
 extern int pc_gx_state_dedup;
+
+/* Per-program uniform value shadowing: a shader switch only re-uploads
+ * uniform groups whose generation the program hasn't seen, instead of
+ * forcing dirty=ALL. PC_NO_UNIFORM_SHADOW=1 disables. */
+extern int pc_gx_uniform_shadow;
 
 typedef struct PCGXShaderCacheEntry {
     uint64_t key;
@@ -278,6 +293,10 @@ void   pc_gx_tev_shutdown(void);
 /* Uniform locations of the program returned by the most recent
  * pc_gx_tev_get_shader call (points into the shader cache). */
 extern const PCGXUniformLocs* pc_gx_tev_last_locs;
+
+/* Per-group uploaded-generation record of that same program (writable;
+ * pc_gx_flush_vertices updates it after uploading). */
+extern unsigned int* pc_gx_tev_last_gens;
 
 /* Fill `out` with uniform locations of `shader` (defined in pc_gx.c). */
 void pc_gx_fill_uniform_locations(GLuint shader, PCGXUniformLocs* out);
