@@ -17,6 +17,10 @@ Supported game version: `GAFE01` — Animal Crossing (USA), Rev 0.
 > yet**. It boots, renders, and saves on real hardware, but expect rough
 > edges — and **save often**. Bug reports are welcome (attach
 > `ports/ac-gc/log.txt`).
+>
+> **Performance (v0.3.0, measured on an RG-34XX SP):** ~56 fps average
+> (median ~60, 78% of samples ≥55) at ~100% game speed, dipping to the
+> low 40s during the heaviest acre streaming.
 
 ## Why this project exists
 
