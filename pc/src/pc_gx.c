@@ -574,118 +574,118 @@ void GXTexCoord1x16(u16 index) {
 }
 void GXTexCoord1x8(u8 index) { GXTexCoord1x16(index); }
 
-/* --- Uniform Location Cache --- */
-static void pc_gx_cache_uniform_locations(GLuint shader) {
+/* --- Uniform Location Fill (called once per program by the TEV shader cache) --- */
+void pc_gx_fill_uniform_locations(GLuint shader, PCGXUniformLocs* u) {
     char name[48];
     int i;
     #define UL(n) glGetUniformLocation(shader, n)
 
-    g_gx.uloc.projection = UL("u_projection");
-    g_gx.uloc.modelview  = UL("u_modelview");
-    g_gx.uloc.normal_mtx = UL("u_normal_mtx");
+    u->projection = UL("u_projection");
+    u->modelview  = UL("u_modelview");
+    u->normal_mtx = UL("u_normal_mtx");
 
-    g_gx.uloc.tev_prev = UL("u_tev_prev");
-    g_gx.uloc.tev_reg0 = UL("u_tev_reg0");
-    g_gx.uloc.tev_reg1 = UL("u_tev_reg1");
-    g_gx.uloc.tev_reg2 = UL("u_tev_reg2");
+    u->tev_prev = UL("u_tev_prev");
+    u->tev_reg0 = UL("u_tev_reg0");
+    u->tev_reg1 = UL("u_tev_reg1");
+    u->tev_reg2 = UL("u_tev_reg2");
 
-    g_gx.uloc.num_tev_stages = UL("u_num_tev_stages");
+    u->num_tev_stages = UL("u_num_tev_stages");
     for (i = 0; i < PC_GX_MAX_TEV_STAGES; i++) {
         snprintf(name, sizeof(name), "u_tev%d_color_in", i);
-        g_gx.uloc.tev_color_in[i] = UL(name);
+        u->tev_color_in[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_alpha_in", i);
-        g_gx.uloc.tev_alpha_in[i] = UL(name);
+        u->tev_alpha_in[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_color_op", i);
-        g_gx.uloc.tev_color_op[i] = UL(name);
+        u->tev_color_op[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_alpha_op", i);
-        g_gx.uloc.tev_alpha_op[i] = UL(name);
+        u->tev_alpha_op[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_tc_src", i);
-        g_gx.uloc.tev_tc_src[i] = UL(name);
+        u->tev_tc_src[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_ind_cfg", i);
-        g_gx.uloc.tev_ind_cfg[i] = UL(name);
+        u->tev_ind_cfg[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_ind_wrap", i);
-        g_gx.uloc.tev_ind_wrap[i] = UL(name);
+        u->tev_ind_wrap[i] = UL(name);
     }
 
-    g_gx.uloc.kcolor   = UL("u_kcolor");
-    g_gx.uloc.tev_ksel = UL("u_tev_ksel");
+    u->kcolor   = UL("u_kcolor");
+    u->tev_ksel = UL("u_tev_ksel");
 
-    g_gx.uloc.alpha_comp0 = UL("u_alpha_comp0");
-    g_gx.uloc.alpha_ref0  = UL("u_alpha_ref0");
-    g_gx.uloc.alpha_op    = UL("u_alpha_op");
-    g_gx.uloc.alpha_comp1 = UL("u_alpha_comp1");
-    g_gx.uloc.alpha_ref1  = UL("u_alpha_ref1");
+    u->alpha_comp0 = UL("u_alpha_comp0");
+    u->alpha_ref0  = UL("u_alpha_ref0");
+    u->alpha_op    = UL("u_alpha_op");
+    u->alpha_comp1 = UL("u_alpha_comp1");
+    u->alpha_ref1  = UL("u_alpha_ref1");
 
-    g_gx.uloc.lighting_enabled = UL("u_lighting_enabled");
-    g_gx.uloc.mat_color  = UL("u_mat_color");
-    g_gx.uloc.amb_color  = UL("u_amb_color");
-    g_gx.uloc.chan_mat_src = UL("u_chan_mat_src");
-    g_gx.uloc.chan_amb_src = UL("u_chan_amb_src");
-    g_gx.uloc.num_chans  = UL("u_num_chans");
-    g_gx.uloc.alpha_lighting_enabled = UL("u_alpha_lighting_enabled");
-    g_gx.uloc.alpha_mat_src = UL("u_alpha_mat_src");
+    u->lighting_enabled = UL("u_lighting_enabled");
+    u->mat_color  = UL("u_mat_color");
+    u->amb_color  = UL("u_amb_color");
+    u->chan_mat_src = UL("u_chan_mat_src");
+    u->chan_amb_src = UL("u_chan_amb_src");
+    u->num_chans  = UL("u_num_chans");
+    u->alpha_lighting_enabled = UL("u_alpha_lighting_enabled");
+    u->alpha_mat_src = UL("u_alpha_mat_src");
 
-    g_gx.uloc.light_mask = UL("u_light_mask");
-    g_gx.uloc.diff_fn = UL("u_diff_fn");
-    g_gx.uloc.attn_fn = UL("u_attn_fn");
+    u->light_mask = UL("u_light_mask");
+    u->diff_fn = UL("u_diff_fn");
+    u->attn_fn = UL("u_attn_fn");
     for (i = 0; i < 8; i++) {
         snprintf(name, sizeof(name), "u_light_pos[%d]", i);
-        g_gx.uloc.light_pos[i] = UL(name);
+        u->light_pos[i] = UL(name);
         snprintf(name, sizeof(name), "u_light_color[%d]", i);
-        g_gx.uloc.light_color[i] = UL(name);
+        u->light_color[i] = UL(name);
         snprintf(name, sizeof(name), "u_light_dir[%d]", i);
-        g_gx.uloc.light_dir[i] = UL(name);
+        u->light_dir[i] = UL(name);
         snprintf(name, sizeof(name), "u_light_a[%d]", i);
-        g_gx.uloc.light_a[i] = UL(name);
+        u->light_a[i] = UL(name);
         snprintf(name, sizeof(name), "u_light_k[%d]", i);
-        g_gx.uloc.light_k[i] = UL(name);
+        u->light_k[i] = UL(name);
     }
 
-    g_gx.uloc.texmtx_enable[0] = UL("u_texmtx_enable");
-    g_gx.uloc.texmtx_row0[0]  = UL("u_texmtx_row0");
-    g_gx.uloc.texmtx_row1[0]  = UL("u_texmtx_row1");
-    g_gx.uloc.texgen_src[0]   = UL("u_texgen_src0");
-    g_gx.uloc.texmtx_enable[1] = UL("u_texmtx1_enable");
-    g_gx.uloc.texmtx_row0[1]  = UL("u_texmtx1_row0");
-    g_gx.uloc.texmtx_row1[1]  = UL("u_texmtx1_row1");
-    g_gx.uloc.texgen_src[1]   = UL("u_texgen_src1");
+    u->texmtx_enable[0] = UL("u_texmtx_enable");
+    u->texmtx_row0[0]  = UL("u_texmtx_row0");
+    u->texmtx_row1[0]  = UL("u_texmtx_row1");
+    u->texgen_src[0]   = UL("u_texgen_src0");
+    u->texmtx_enable[1] = UL("u_texmtx1_enable");
+    u->texmtx_row0[1]  = UL("u_texmtx1_row0");
+    u->texmtx_row1[1]  = UL("u_texmtx1_row1");
+    u->texgen_src[1]   = UL("u_texgen_src1");
 
-    g_gx.uloc.use_texture0 = UL("u_use_texture0");
-    g_gx.uloc.use_texture1 = UL("u_use_texture1");
-    g_gx.uloc.use_texture2 = UL("u_use_texture2");
-    g_gx.uloc.texture0 = UL("u_texture0");
-    g_gx.uloc.texture1 = UL("u_texture1");
-    g_gx.uloc.texture2 = UL("u_texture2");
+    u->use_texture0 = UL("u_use_texture0");
+    u->use_texture1 = UL("u_use_texture1");
+    u->use_texture2 = UL("u_use_texture2");
+    u->texture0 = UL("u_texture0");
+    u->texture1 = UL("u_texture1");
+    u->texture2 = UL("u_texture2");
 
-    g_gx.uloc.num_ind_stages = UL("u_num_ind_stages");
+    u->num_ind_stages = UL("u_num_ind_stages");
     for (i = 0; i < 4; i++) {
         snprintf(name, sizeof(name), "u_ind_tex%d", i);
-        g_gx.uloc.ind_tex[i] = UL(name);
+        u->ind_tex[i] = UL(name);
         snprintf(name, sizeof(name), "u_ind_scale[%d]", i);
-        g_gx.uloc.ind_scale[i] = UL(name);
+        u->ind_scale[i] = UL(name);
     }
     for (i = 0; i < PC_GX_MAX_TEV_STAGES; i++) {
         snprintf(name, sizeof(name), "u_ind_mtx_r0[%d]", i);
-        g_gx.uloc.ind_mtx_r0[i] = UL(name);
+        u->ind_mtx_r0[i] = UL(name);
         snprintf(name, sizeof(name), "u_ind_mtx_r1[%d]", i);
-        g_gx.uloc.ind_mtx_r1[i] = UL(name);
+        u->ind_mtx_r1[i] = UL(name);
     }
 
-    g_gx.uloc.fog_type  = UL("u_fog_type");
-    g_gx.uloc.fog_start = UL("u_fog_start");
-    g_gx.uloc.fog_end   = UL("u_fog_end");
-    g_gx.uloc.fog_color = UL("u_fog_color");
+    u->fog_type  = UL("u_fog_type");
+    u->fog_start = UL("u_fog_start");
+    u->fog_end   = UL("u_fog_end");
+    u->fog_color = UL("u_fog_color");
 
     /* Per-stage bias/scale/clamp/output */
     for (i = 0; i < PC_GX_MAX_TEV_STAGES; i++) {
         snprintf(name, sizeof(name), "u_tev%d_bsc", i);
-        g_gx.uloc.tev_bsc[i] = UL(name);
+        u->tev_bsc[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_out", i);
-        g_gx.uloc.tev_out[i] = UL(name);
+        u->tev_out[i] = UL(name);
         snprintf(name, sizeof(name), "u_tev%d_swap", i);
-        g_gx.uloc.tev_swap[i] = UL(name);
+        u->tev_swap[i] = UL(name);
     }
-    g_gx.uloc.swap_table = UL("u_swap_table");
+    u->swap_table = UL("u_swap_table");
 
     #undef UL
 }
@@ -712,7 +712,9 @@ void pc_gx_flush_vertices(void) {
         glUseProgram(shader);
         PC_GL_CHECK("glUseProgram");
         g_gx.current_shader = shader;
-        pc_gx_cache_uniform_locations(shader);
+        /* Locations were resolved once at link time by the shader cache;
+         * a struct copy replaces ~150 glGetUniformLocation driver calls. */
+        g_gx.uloc = *pc_gx_tev_last_locs;
         g_gx.dirty = PC_GX_DIRTY_ALL;
         /* Set constant sampler bindings once per shader change */
         {

@@ -68,6 +68,13 @@ static GLuint compile_shader(GLenum type, const char* source) {
     return shader;
 }
 
+/* Disk cache for linked program binaries (GLES only: Mali/Adreno drivers
+ * compile GLSL slowly and mid-frame, causing visible hitches on first visit
+ * to each area. glProgramBinary reload at boot is ~1ms per program.) */
+#ifdef PC_USE_GLES
+#define SHADER_DISK_CACHE 1
+#endif
+
 /* --- Vertex shader (compiled once, kept alive) --- */
 static GLuint s_vs = 0;
 
@@ -80,6 +87,10 @@ static GLuint link_with_vs(GLuint frag) {
     glBindAttribLocation(prog, 1, "a_normal");
     glBindAttribLocation(prog, 2, "a_color0");
     glBindAttribLocation(prog, 3, "a_texcoord0");
+#ifdef SHADER_DISK_CACHE
+    if (glProgramParameteri)
+        glProgramParameteri(prog, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+#endif
     glLinkProgram(prog);
     GLint success;
     glGetProgramiv(prog, GL_LINK_STATUS, &success);
@@ -162,11 +173,17 @@ static void build_key(PCGXState* st, ShaderKey* k) {
 #define SCACHE_SIZE 256
 #define SCACHE_MASK (SCACHE_SIZE - 1)
 
-static struct {
+typedef struct {
     ShaderKey key;
     GLuint program;
+    PCGXUniformLocs locs;  /* resolved once at link time */
     int valid;
-} s_cache[SCACHE_SIZE];
+} SCacheEntry;
+
+static SCacheEntry s_cache[SCACHE_SIZE];
+
+/* Locations of the program returned by the last pc_gx_tev_get_shader call */
+const PCGXUniformLocs* pc_gx_tev_last_locs = NULL;
 
 static u32 hash_key(const ShaderKey* k) {
     const u8* p = (const u8*)k;
@@ -178,32 +195,37 @@ static u32 hash_key(const ShaderKey* k) {
     return h;
 }
 
-static GLuint cache_lookup(const ShaderKey* k) {
+static SCacheEntry* cache_lookup(const ShaderKey* k) {
     u32 slot = hash_key(k) & SCACHE_MASK;
     for (int i = 0; i < SCACHE_SIZE; i++) {
         u32 s = (slot + i) & SCACHE_MASK;
-        if (!s_cache[s].valid) return 0;
+        if (!s_cache[s].valid) return NULL;
         if (memcmp(&s_cache[s].key, k, sizeof(ShaderKey)) == 0)
-            return s_cache[s].program;
+            return &s_cache[s];
     }
-    return 0;
+    return NULL;
 }
 
-static void cache_insert(const ShaderKey* k, GLuint prog) {
+static SCacheEntry* cache_insert(const ShaderKey* k, GLuint prog) {
+    SCacheEntry* e = NULL;
     u32 slot = hash_key(k) & SCACHE_MASK;
     for (int i = 0; i < SCACHE_SIZE; i++) {
         u32 s = (slot + i) & SCACHE_MASK;
         if (!s_cache[s].valid) {
-            s_cache[s].key = *k;
-            s_cache[s].program = prog;
-            s_cache[s].valid = 1;
-            return;
+            e = &s_cache[s];
+            break;
         }
     }
-    /* cache full — evict this slot */
-    s_cache[slot].key = *k;
-    if (s_cache[slot].program) glDeleteProgram(s_cache[slot].program);
-    s_cache[slot].program = prog;
+    if (!e) {
+        /* cache full — evict this slot */
+        e = &s_cache[slot];
+        if (e->program) glDeleteProgram(e->program);
+    }
+    e->key = *k;
+    e->program = prog;
+    e->valid = 1;
+    pc_gx_fill_uniform_locations(prog, &e->locs);
+    return e;
 }
 
 /* ===================================================================
@@ -552,6 +574,125 @@ static char* generate_frag(PCGXState* st) {
 
 /* Fallback uber-shader (loaded from files, used if specialization fails) */
 static GLuint s_fallback = 0;
+static PCGXUniformLocs s_fallback_locs;
+
+/* ===================================================================
+ * Program binary disk cache (shader_cache.bin in the working dir,
+ * next to settings.ini). Kills first-visit shader compile hitches on
+ * every run after the config was first seen.
+ *
+ * Layout: [magic u32][version u32][driver_hash u32] then per entry:
+ * [ShaderKey][binary_format u32][length u32][data]
+ * =================================================================== */
+#ifdef SHADER_DISK_CACHE
+
+#define SDC_FILE    "shader_cache.bin"
+#define SDC_MAGIC   0x41435343u /* "ACSC" */
+#define SDC_VERSION 1u
+#define SDC_MAX_BIN (1u << 20)  /* sanity cap per program binary */
+
+static int s_sdc_ok = 0; /* file exists with valid header; safe to append */
+
+/* Binaries are driver-specific: mix renderer+version strings into the header
+ * so a GPU driver update invalidates the cache instead of feeding stale blobs. */
+static u32 sdc_driver_hash(void) {
+    u32 h = 0x811c9dc5u;
+    const char* strs[2];
+    strs[0] = (const char*)glGetString(GL_RENDERER);
+    strs[1] = (const char*)glGetString(GL_VERSION);
+    for (int i = 0; i < 2; i++) {
+        for (const char* p = strs[i]; p && *p; p++) {
+            h ^= (u8)*p;
+            h *= 0x01000193u;
+        }
+    }
+    return h;
+}
+
+static int sdc_supported(void) {
+    return glProgramBinary != NULL && glGetProgramBinary != NULL &&
+           getenv("PC_NO_SHADER_CACHE") == NULL;
+}
+
+static void sdc_write_header(void) {
+    FILE* f = fopen(SDC_FILE, "wb");
+    if (!f) return;
+    u32 hdr[3] = { SDC_MAGIC, SDC_VERSION, sdc_driver_hash() };
+    if (fwrite(hdr, sizeof(hdr), 1, f) == 1) s_sdc_ok = 1;
+    fclose(f);
+}
+
+static void sdc_load(void) {
+    if (!sdc_supported()) return;
+
+    FILE* f = fopen(SDC_FILE, "rb");
+    if (!f) { sdc_write_header(); return; }
+
+    u32 hdr[3];
+    if (fread(hdr, sizeof(hdr), 1, f) != 1 ||
+        hdr[0] != SDC_MAGIC || hdr[1] != SDC_VERSION || hdr[2] != sdc_driver_hash()) {
+        fclose(f);
+        printf("[PC/TEV] Shader disk cache stale/invalid, rebuilding\n");
+        sdc_write_header();
+        return;
+    }
+
+    int loaded = 0;
+    for (;;) {
+        ShaderKey key;
+        u32 meta[2]; /* binary_format, length */
+        if (fread(&key, sizeof(key), 1, f) != 1) break;
+        if (fread(meta, sizeof(meta), 1, f) != 1) break;
+        if (meta[1] == 0 || meta[1] > SDC_MAX_BIN) break;
+        void* bin = malloc(meta[1]);
+        if (!bin) break;
+        if (fread(bin, 1, meta[1], f) != meta[1]) { free(bin); break; }
+
+        if (!cache_lookup(&key)) {
+            GLuint prog = glCreateProgram();
+            glProgramBinary(prog, (GLenum)meta[0], bin, (GLsizei)meta[1]);
+            GLint ok = 0;
+            glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+            if (ok) {
+                cache_insert(&key, prog);
+                loaded++;
+            } else {
+                glDeleteProgram(prog); /* driver rejected blob; will recompile */
+            }
+        }
+        free(bin);
+    }
+    fclose(f);
+    s_sdc_ok = 1;
+    if (loaded)
+        printf("[PC/TEV] Preloaded %d shader(s) from disk cache\n", loaded);
+}
+
+static void sdc_append(const ShaderKey* key, GLuint prog) {
+    if (!s_sdc_ok || !sdc_supported()) return;
+
+    GLint len = 0;
+    glGetProgramiv(prog, GL_PROGRAM_BINARY_LENGTH, &len);
+    if (len <= 0 || (u32)len > SDC_MAX_BIN) return;
+    void* bin = malloc((size_t)len);
+    if (!bin) return;
+    GLsizei written = 0;
+    GLenum fmt = 0;
+    glGetProgramBinary(prog, len, &written, &fmt, bin);
+    if (written > 0) {
+        FILE* f = fopen(SDC_FILE, "ab");
+        if (f) {
+            u32 meta[2] = { (u32)fmt, (u32)written };
+            fwrite(key, sizeof(*key), 1, f);
+            fwrite(meta, sizeof(meta), 1, f);
+            fwrite(bin, 1, (size_t)written, f);
+            fclose(f);
+        }
+    }
+    free(bin);
+}
+
+#endif /* SHADER_DISK_CACHE */
 
 /* ===================================================================
  * Public API
@@ -577,12 +718,20 @@ void pc_gx_tev_init(void) {
         if (fs) s_fallback = link_with_vs(fs);
         free(fs_src);
     }
-    if (s_fallback)
+    if (s_fallback) {
+        pc_gx_fill_uniform_locations(s_fallback, &s_fallback_locs);
         printf("[PC/TEV] Fallback uber-shader ready. Specialized shaders will be generated on demand.\n");
-    else
+    } else {
         printf("[PC/TEV] Warning: no fallback shader. All shaders will be generated.\n");
+    }
 
     memset(s_cache, 0, sizeof(s_cache));
+
+#ifdef SHADER_DISK_CACHE
+    /* Preload program binaries from previous runs — happens during boot,
+     * before gameplay, so first visits to areas no longer compile mid-frame. */
+    sdc_load();
+#endif
 }
 
 void pc_gx_tev_shutdown(void) {
@@ -594,6 +743,7 @@ void pc_gx_tev_shutdown(void) {
     memset(s_cache, 0, sizeof(s_cache));
     if (s_fallback) { glDeleteProgram(s_fallback); s_fallback = 0; }
     if (s_vs) { glDeleteShader(s_vs); s_vs = 0; }
+    pc_gx_tev_last_locs = NULL;
 }
 
 GLuint pc_gx_tev_get_shader(PCGXState* state) {
@@ -601,10 +751,14 @@ GLuint pc_gx_tev_get_shader(PCGXState* state) {
     build_key(state, &key);
 
     /* Fast path: cached lookup */
-    GLuint prog = cache_lookup(&key);
-    if (prog) return prog;
+    SCacheEntry* e = cache_lookup(&key);
+    if (e) {
+        pc_gx_tev_last_locs = &e->locs;
+        return e->program;
+    }
 
     /* Cache miss: generate specialized fragment shader */
+    GLuint prog = 0;
     char* frag_src = generate_frag(state);
     if (frag_src) {
         GLuint fs = compile_shader(GL_FRAGMENT_SHADER, frag_src);
@@ -619,7 +773,11 @@ GLuint pc_gx_tev_get_shader(PCGXState* state) {
     }
 
     if (prog) {
-        cache_insert(&key, prog);
+        e = cache_insert(&key, prog);
+        pc_gx_tev_last_locs = &e->locs;
+#ifdef SHADER_DISK_CACHE
+        sdc_append(&key, prog);
+#endif
         static int s_shader_count = 0;
         s_shader_count++;
         printf("[PC/TEV] Compiled specialized shader #%d\n", s_shader_count);
@@ -627,5 +785,6 @@ GLuint pc_gx_tev_get_shader(PCGXState* state) {
     }
 
     /* Fall back to uber-shader */
+    pc_gx_tev_last_locs = &s_fallback_locs;
     return s_fallback;
 }

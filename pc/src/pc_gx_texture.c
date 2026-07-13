@@ -98,16 +98,58 @@ static int tex_cache_count = 0;
 static int tex_cache_hits = 0;
 static int tex_cache_misses = 0;
 
-/* Linear scan. Fine for <=2048 entries at ~100% hit rate. */
+/* Open-addressed hash index over tex_cache. Slots store entry_index+1
+ * (0 = empty). Deletions only happen in bulk (eviction rebuilds, invalidate
+ * clears), so no tombstones needed. */
+#define TEX_INDEX_SIZE 4096
+static u16 tex_index[TEX_INDEX_SIZE];
+
+/* FNV-1a over the 8-field cache key */
+static u32 tex_key_hash(u32 data_ptr, u32 w, u32 h, u32 fmt, u32 tlut_name,
+                        u32 tlut_ptr, u32 tlut_hash, u32 data_hash) {
+    u32 key[8] = { data_ptr, w, h, fmt, tlut_name, tlut_ptr, tlut_hash, data_hash };
+    u32 hash = 0x811c9dc5u;
+    for (int i = 0; i < 8; i++) {
+        u32 v = key[i];
+        for (int b = 0; b < 4; b++) {
+            hash ^= (v >> (b * 8)) & 0xFF;
+            hash *= 0x01000193u;
+        }
+    }
+    return hash;
+}
+
+static void tex_index_insert(int entry_idx) {
+    TexCacheEntry* e = &tex_cache[entry_idx];
+    u32 slot = tex_key_hash(e->data_ptr, e->width, e->height, e->format, e->tlut_name,
+                            e->tlut_ptr, e->tlut_hash, e->data_hash) & (TEX_INDEX_SIZE - 1);
+    while (tex_index[slot] != 0)
+        slot = (slot + 1) & (TEX_INDEX_SIZE - 1);
+    tex_index[slot] = (u16)(entry_idx + 1);
+}
+
+static void tex_index_rebuild(void) {
+    memset(tex_index, 0, sizeof(tex_index));
+    for (int i = 0; i < tex_cache_count; i++)
+        tex_index_insert(i);
+}
+
+/* O(1) hash lookup with linear probing */
 static TexCacheEntry* tex_cache_find(u32 data_ptr, int w, int h, u32 fmt, u32 tlut_name,
                                      u32 tlut_ptr, u32 tlut_hash, u32 data_hash) {
-    for (int i = 0; i < tex_cache_count; i++) {
-        TexCacheEntry* e = &tex_cache[i];
+    u32 slot = tex_key_hash(data_ptr, (u32)w, (u32)h, fmt, tlut_name,
+                            tlut_ptr, tlut_hash, data_hash) & (TEX_INDEX_SIZE - 1);
+    for (int i = 0; i < TEX_INDEX_SIZE; i++) {
+        u16 idx = tex_index[slot];
+        if (idx == 0)
+            return NULL;
+        TexCacheEntry* e = &tex_cache[idx - 1];
         if (e->data_ptr == data_ptr && e->width == w && e->height == h &&
             e->format == fmt && e->tlut_name == tlut_name && e->tlut_ptr == tlut_ptr &&
             e->tlut_hash == tlut_hash && e->data_hash == data_hash) {
             return e;
         }
+        slot = (slot + 1) & (TEX_INDEX_SIZE - 1);
     }
     return NULL;
 }
@@ -129,6 +171,7 @@ static TexCacheEntry* tex_cache_insert(u32 data_ptr, int w, int h, u32 fmt, u32 
         }
         memmove(&tex_cache[0], &tex_cache[half], (tex_cache_count - half) * sizeof(TexCacheEntry));
         tex_cache_count -= half;
+        tex_index_rebuild();
     }
     TexCacheEntry* e = &tex_cache[tex_cache_count++];
     e->data_ptr = data_ptr;
@@ -144,6 +187,7 @@ static TexCacheEntry* tex_cache_insert(u32 data_ptr, int w, int h, u32 fmt, u32 
     e->wrap_t = 0xFFFFFFFF;
     e->min_filter = 0xFFFFFFFF;
     e->external = 0;
+    tex_index_insert(tex_cache_count - 1);
     return e;
 }
 
@@ -154,6 +198,7 @@ void pc_gx_texture_cache_invalidate(void) {
         }
     }
     tex_cache_count = 0;
+    memset(tex_index, 0, sizeof(tex_index));
 }
 
 void pc_gx_texture_init(void) {

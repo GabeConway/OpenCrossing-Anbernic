@@ -84,6 +84,37 @@ typedef struct {
     int r, g, b, a;  /* channel indices: 0=R, 1=G, 2=B, 3=A */
 } PCGXTevSwapTable;
 
+/* Uniform locations for one linked program. Filled once at link/first-use
+ * time by the TEV shader cache, then copied into g_gx.uloc on shader switch —
+ * avoids ~150 glGetUniformLocation driver calls per switch. */
+typedef struct {
+    GLint projection, modelview, normal_mtx;
+    GLint tev_prev, tev_reg0, tev_reg1, tev_reg2;
+    GLint num_tev_stages;
+    GLint tev_color_in[PC_GX_MAX_TEV_STAGES], tev_alpha_in[PC_GX_MAX_TEV_STAGES];
+    GLint tev_color_op[PC_GX_MAX_TEV_STAGES], tev_alpha_op[PC_GX_MAX_TEV_STAGES];
+    GLint kcolor, tev_ksel;
+    GLint alpha_comp0, alpha_ref0, alpha_op, alpha_comp1, alpha_ref1;
+    GLint lighting_enabled, mat_color, amb_color;
+    GLint chan_mat_src, chan_amb_src, num_chans;
+    GLint alpha_lighting_enabled, alpha_mat_src;
+    GLint light_mask, light_pos[8], light_color[8];
+    GLint diff_fn, attn_fn;
+    GLint light_dir[8], light_a[8], light_k[8];
+    GLint texmtx_enable[2], texmtx_row0[2], texmtx_row1[2], texgen_src[2];
+    GLint use_texture0, use_texture1, use_texture2;
+    GLint texture0, texture1, texture2;
+    GLint tev_tc_src[PC_GX_MAX_TEV_STAGES];
+    GLint num_ind_stages;
+    GLint ind_tex[4], ind_scale[4];
+    GLint ind_mtx_r0[PC_GX_MAX_TEV_STAGES], ind_mtx_r1[PC_GX_MAX_TEV_STAGES];
+    GLint tev_ind_cfg[PC_GX_MAX_TEV_STAGES], tev_ind_wrap[PC_GX_MAX_TEV_STAGES];
+    GLint fog_type, fog_start, fog_end, fog_color;
+    GLint tev_bsc[PC_GX_MAX_TEV_STAGES], tev_out[PC_GX_MAX_TEV_STAGES];
+    GLint swap_table;
+    GLint tev_swap[PC_GX_MAX_TEV_STAGES];
+} PCGXUniformLocs;
+
 typedef struct {
     /* Primitive assembly */
     int current_primitive;
@@ -200,34 +231,8 @@ typedef struct {
     GLuint ebo;
     GLuint current_shader;
 
-    /* Uniform locations (looked up once per shader change) */
-    struct {
-        GLint projection, modelview, normal_mtx;
-        GLint tev_prev, tev_reg0, tev_reg1, tev_reg2;
-        GLint num_tev_stages;
-        GLint tev_color_in[PC_GX_MAX_TEV_STAGES], tev_alpha_in[PC_GX_MAX_TEV_STAGES];
-        GLint tev_color_op[PC_GX_MAX_TEV_STAGES], tev_alpha_op[PC_GX_MAX_TEV_STAGES];
-        GLint kcolor, tev_ksel;
-        GLint alpha_comp0, alpha_ref0, alpha_op, alpha_comp1, alpha_ref1;
-        GLint lighting_enabled, mat_color, amb_color;
-        GLint chan_mat_src, chan_amb_src, num_chans;
-        GLint alpha_lighting_enabled, alpha_mat_src;
-        GLint light_mask, light_pos[8], light_color[8];
-        GLint diff_fn, attn_fn;
-        GLint light_dir[8], light_a[8], light_k[8];
-        GLint texmtx_enable[2], texmtx_row0[2], texmtx_row1[2], texgen_src[2];
-        GLint use_texture0, use_texture1, use_texture2;
-        GLint texture0, texture1, texture2;
-        GLint tev_tc_src[PC_GX_MAX_TEV_STAGES];
-        GLint num_ind_stages;
-        GLint ind_tex[4], ind_scale[4];
-        GLint ind_mtx_r0[PC_GX_MAX_TEV_STAGES], ind_mtx_r1[PC_GX_MAX_TEV_STAGES];
-        GLint tev_ind_cfg[PC_GX_MAX_TEV_STAGES], tev_ind_wrap[PC_GX_MAX_TEV_STAGES];
-        GLint fog_type, fog_start, fog_end, fog_color;
-        GLint tev_bsc[PC_GX_MAX_TEV_STAGES], tev_out[PC_GX_MAX_TEV_STAGES];
-        GLint swap_table;
-        GLint tev_swap[PC_GX_MAX_TEV_STAGES];
-    } uloc;
+    /* Uniform locations (copied from the shader cache on shader change) */
+    PCGXUniformLocs uloc;
 
     float clear_color[4];
     float clear_depth;
@@ -265,6 +270,13 @@ void pc_gx_flush_if_begin_complete(void);
 GLuint pc_gx_tev_get_shader(PCGXState* state);
 void   pc_gx_tev_init(void);
 void   pc_gx_tev_shutdown(void);
+
+/* Uniform locations of the program returned by the most recent
+ * pc_gx_tev_get_shader call (points into the shader cache). */
+extern const PCGXUniformLocs* pc_gx_tev_last_locs;
+
+/* Fill `out` with uniform locations of `shader` (defined in pc_gx.c). */
+void pc_gx_fill_uniform_locations(GLuint shader, PCGXUniformLocs* out);
 
 /* Texture cache */
 GLuint pc_gx_texture_upload(void* data, int width, int height, int format, int ci_format,

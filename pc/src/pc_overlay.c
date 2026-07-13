@@ -1069,6 +1069,45 @@ void pc_overlay_menu_toggle(void) {
     rep_up = rep_down = rep_left = rep_right = 0;
 }
 
+void pc_overlay_boot_splash(const char* msg) {
+    if (!ov_prog || !g_pc_window) return;
+
+    SDL_PumpEvents();
+
+    glViewport(0, 0, g_pc_window_w, g_pc_window_h);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(ov_prog);
+    glBindVertexArray(ov_vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ov_tex);
+    glUniform1i(ov_loc_font, 0);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+
+    int scale = g_pc_window_h / 240;
+    if (scale < 1) scale = 1;
+    if (scale > 6) scale = 6;
+    float cw = 8.0f * scale;
+    float ch = 8.0f * scale;
+
+    ov_nv = 0;
+    float x = ((float)g_pc_window_w - (float)strlen(msg) * cw) * 0.5f;
+    float y = ((float)g_pc_window_h - ch) * 0.5f;
+    ov_string(msg, x, y, cw, ch, 1, 1, 1, 1);
+
+    if (ov_nv > 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(ov_nv * sizeof(OvVtx)), ov_verts);
+        glDrawArrays(GL_TRIANGLES, 0, ov_nv);
+    }
+
+    SDL_GL_SwapWindow(g_pc_window);
+}
+
 void pc_overlay_draw(void) {
     if (!ov_prog) return;
 

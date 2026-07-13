@@ -293,8 +293,12 @@ void pc_platform_init(void) {
     }
 #endif
 
-    pc_gx_init();
+    /* Overlay first so the boot splash can render before the slow parts of
+     * startup (shader cache preload, texture pack, disc asset loading). */
     pc_overlay_init();
+    pc_overlay_boot_splash("LOADING...");
+
+    pc_gx_init();
     pc_texture_pack_init();
 #ifdef PC_ENHANCEMENTS
     if (g_pc_settings.preload_textures) {
