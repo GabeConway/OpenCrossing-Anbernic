@@ -44,9 +44,18 @@ fi
 
 export XDG_DATA_HOME="$CONFDIR"
 export LD_LIBRARY_PATH="/usr/lib32:$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
-# 32-bit pipewire client can't load its SPA support plugin on muOS;
-# route audio through the ALSA->PipeWire bridge instead.
-export SDL_AUDIODRIVER=alsa
+# muOS audio is PipeWire; 32-bit clients need the lib32 plugin paths set
+# explicitly or pw_loop_new fails with "can't make support.system handle".
+[ -d /usr/lib32/spa-0.2 ] && export SPA_PLUGIN_DIR=/usr/lib32/spa-0.2
+[ -d /usr/lib32/pipewire-0.3 ] && export PIPEWIRE_MODULE_DIR=/usr/lib32/pipewire-0.3
+export SDL_AUDIODRIVER=pipewire,alsa,dsp
+
+# Audio diagnostics for log.txt while we chase the silence bug
+echo "--- audio diag ---"
+ls /usr/lib32 2>/dev/null | grep -iE "spa|pipewire|asound|pulse|SDL2"
+ls /usr/lib32/spa-0.2/support 2>/dev/null
+cat /proc/asound/cards 2>/dev/null
+echo "--- end diag ---"
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 chmod +x "$GAMEDIR/AnimalCrossing"
 
