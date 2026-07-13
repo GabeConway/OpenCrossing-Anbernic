@@ -80,8 +80,16 @@ is line-buffered, so future device logs show the crash context.
     frameskip flush no longer clears g_gx.dirty (it applied nothing to GL, so
     clearing dropped GL-state changes made during skipped frames).
 
+11. **Dynamic-fps upward probe** (2026-07-13, P2.5, awaiting device test):
+    governor was bistable — low target ⇒ more logic ticks per measured
+    batch ⇒ measured work stays high ⇒ low target self-sustains (device:
+    outdoor 30 fps until a house visit reset it to 60). When target < 60,
+    every 120 render frames the EMA halves to re-test headroom; genuine
+    load re-converges in ~4 frames. Kill switch PC_NO_FPS_PROBE=1.
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe
 - PC_NO_UNIFORM_SHADOW=1 — disable per-program uniform value shadowing
 - PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)
 - PC_NO_DRAW_MERGE=1 — disable GXBegin draw-call merging

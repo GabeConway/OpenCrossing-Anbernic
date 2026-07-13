@@ -7,13 +7,16 @@
   house → 60; exit → same outdoor area now 60 and stays there). Root cause
   (pc_vi.c): `pc_dynamic_fps_update` feeds on `work_us` = whole batch
   (all frameskip logic-only ticks + render tick). At target 30 the batch is
-  2 logic ticks + 1 render, so measured work stays ≥33ms → EMA never drops
-  → fps_opt stays ≤30 → self-sustaining, even when a 1-tick/60fps frame
-  would cost ~18ms. Cheap interior breaks the loop; state then holds at 60.
-  NOT a shader issue (disk cache rules out recompiles). Fix directions:
-  normalize work by ticks-in-batch, or estimate 1-tick cost
-  (logic_per_tick + render) and target from that, or periodic upward probe
-  (every ~2s force target+step and keep it if speed holds 100%).
+  2 logic ticks + 1 render, so measured work stays high → EMA never drops
+  → low target self-sustains, even when a 1-tick/60fps frame would fit.
+  (Swap-wait/vsync rounding inside work_us may contribute too.) Cheap
+  interior breaks the loop; state then holds at 60. NOT a shader issue.
+  **FIX SHIPPED 2026-07-13 (P2.5, awaiting device test): upward probe** —
+  when target < 60, every 120 render frames the EMA is halved so the
+  governor re-tests headroom; real load re-converges within ~4 frames.
+  Kill switch PC_NO_FPS_PROBE=1. If probe wobble is visible in true-30
+  scenes, alternatives: normalize work by ticks-in-batch, or estimate
+  single-tick cost (logic vs render split) and target from that.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
