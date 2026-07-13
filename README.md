@@ -48,6 +48,31 @@ project is about:
 Upstream work continues to target desktops; this project is its own thing going
 forward, focused on making the game genuinely good on handheld hardware.
 
+## Supported devices
+
+Developed and tested on the **RG-34XX SP**. Every other Anbernic in muOS's
+supported lineup shares the same Allwinner H700 chip (quad Cortex-A53 +
+Mali-G31), so the same binary and rendering path should run on all of them —
+**likely working, but untested**:
+
+| Device | Screen | Notes |
+|---|---|---|
+| RG-34XX SP | 720×480 (3:2) | ✅ Tested — the development device |
+| RG34XX | 720×480 (3:2) | Same screen and chip as the SP; safest bet |
+| RG35XX SP / Plus / H / 2024 / Pro | 640×480 (4:3) | Native 4:3 — the game's original aspect |
+| RG40XX H / RG40XX V | 640×480 (4:3) | Same as above on a 4" panel |
+| RG28XX | 640×480 (4:3) | Small screen; overlay menu scales but is cozy |
+| RG CubeXX | 720×720 (1:1) | Square panel — expect letterboxing |
+
+The launcher and settings already handle 4:3 output and letterbox/stretch
+modes, so no configuration should be needed beyond the normal install. If you
+try one of these, please report the result (working or not) in an issue and
+attach `ports/ac-gc/log.txt` — a single log is enough to move a device out of
+the "untested" column.
+
+Non-H700 devices (older RG35XX models on other chips, RK3566 devices, etc.)
+are **not** expected to work with the release builds.
+
 ## Installing on a muOS device
 
 No build tools needed — everything except the game itself comes in the release
