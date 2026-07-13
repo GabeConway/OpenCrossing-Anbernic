@@ -27,7 +27,7 @@ PCSettings g_pc_settings = {
     .sfx_volume = 100,
     .voice_volume = 100,
     .zoom_enabled = 1,
-    .fps_target    = 0,    /* 60fps default */
+    .fps_target    = 6,    /* dynamic default: logic stays 100%% speed, render fps floats (60 cap) */
     .render_scale  = 100,
     .window_size   = 2,    /* 640x480 default (matches device screen) */
     .scale_mode    = 0,
@@ -68,7 +68,8 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "[Performance]\n"
     "# FPS target: 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=dynamic\n"
-    "fps_target = 0\n"
+    "# dynamic keeps game speed at 100%% and floats render fps (best on handhelds)\n"
+    "fps_target = 6\n"
     "\n"
     "# Render scale %%: 100=native, 75, 50, 25 (lower = faster on limited hardware)\n"
     "render_scale = 100\n"
