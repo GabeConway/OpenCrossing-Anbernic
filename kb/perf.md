@@ -133,6 +133,16 @@ is line-buffered, so future device logs show the crash context.
     SubData upload for on-device A/B. Screenshot harness for Mesa visual
     checks: Xvfb -fbdir XWD dump, see scratchpad shot.sh pattern (worth
     porting into harness/ if needed again).
+    **v2 DEVICE-VERIFIED 2026-07-13**: renders correctly, zero GL errors,
+    no fallback, user reports grids feel smoother. BUT throughput-neutral
+    on early data: per-draw slope ~30.3µs (n=46, was 29.5), heavy scenes
+    still ~35 fps. Per-draw cost is therefore raw draw-dispatch overhead
+    in the Mali blob, not buffer management. Kept for the smoothness
+    (map path avoids driver sync stalls → better 1% lows). CONCLUSION:
+    the next real lever is REDUCING DRAW COUNT, not cheapening draws —
+    top idea: convert strips/fans to indexed triangles at accumulation
+    time so they become mergeable with triangle batches (strips/fans
+    never merge today, see GXBegin merging rules).
 
 ## Runtime triage switches (launcher env vars)
 
