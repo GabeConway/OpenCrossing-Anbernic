@@ -692,6 +692,96 @@ static void sdc_append(const ShaderKey* key, GLuint prog) {
     free(bin);
 }
 
+/* --- Seed warmup ---------------------------------------------------
+ * shaders/shader_seed.bin ships with the port: same container format as
+ * shader_cache.bin but the binary blobs are stripped (len=0) — only the
+ * driver-independent ShaderKeys matter. On first launch (empty local cache)
+ * every seeded TEV config is generated and compiled during the LOADING
+ * splash, then appended to the local cache as a driver binary, so gameplay
+ * never compiles a known shader — even on the very first run. */
+
+/* Rebuild the minimal PCGXState that generate_frag() reads from a key.
+ * Every field generate_frag consults is captured in ShaderKey. */
+static void state_from_key(const ShaderKey* k, PCGXState* st) {
+    st->num_tev_stages = k->num_stages;
+    st->num_chans = k->num_chans;
+    st->chan_ctrl_enable[0] = k->light_enable;
+    st->chan_ctrl_mat_src[0] = k->light_mat_src;
+    st->chan_ctrl_amb_src[0] = k->light_amb_src;
+    st->chan_ctrl_enable[1] = k->alpha_light_en;
+    st->chan_ctrl_mat_src[1] = k->alpha_mat_src;
+    st->fog_type = k->fog_enabled;
+    st->alpha_comp0 = k->alpha_comp0;
+    st->alpha_op = k->alpha_aop;
+    st->alpha_comp1 = k->alpha_comp1;
+    for (int i = 0; i < k->num_stages && i < PC_GX_MAX_TEV_STAGES; i++) {
+        PCGXTevStage* ts = &st->tev_stages[i];
+        ts->color_a = k->s[i].cin[0]; ts->color_b = k->s[i].cin[1];
+        ts->color_c = k->s[i].cin[2]; ts->color_d = k->s[i].cin[3];
+        ts->alpha_a = k->s[i].ain[0]; ts->alpha_b = k->s[i].ain[1];
+        ts->alpha_c = k->s[i].ain[2]; ts->alpha_d = k->s[i].ain[3];
+        ts->color_op = k->s[i].color_op;
+        ts->alpha_op = k->s[i].alpha_op;
+        ts->color_bias = k->s[i].color_bias;
+        ts->color_scale = k->s[i].color_scale;
+        ts->alpha_bias = k->s[i].alpha_bias;
+        ts->alpha_scale = k->s[i].alpha_scale;
+        ts->color_clamp = k->s[i].color_clamp;
+        ts->alpha_clamp = k->s[i].alpha_clamp;
+        ts->color_out = k->s[i].color_out;
+        ts->alpha_out = k->s[i].alpha_out;
+        ts->k_color_sel = k->s[i].k_color_sel;
+        ts->k_alpha_sel = k->s[i].k_alpha_sel;
+    }
+}
+
+static void sdc_warm_from_seed(void) {
+    FILE* f = fopen("shaders/shader_seed.bin", "rb");
+    if (!f) return;
+
+    u32 hdr[3];
+    if (fread(hdr, sizeof(hdr), 1, f) != 1 ||
+        hdr[0] != SDC_MAGIC || hdr[1] != SDC_VERSION) {
+        fclose(f);
+        return; /* seed from a different format version — ignore */
+    }
+    /* driver hash intentionally NOT checked: only the keys are used */
+
+    /* PCGXState is ~3MB (vertex buffer) — heap, not stack */
+    PCGXState* st = (PCGXState*)calloc(1, sizeof(PCGXState));
+    if (!st) { fclose(f); return; }
+
+    int compiled = 0;
+    for (;;) {
+        ShaderKey key;
+        u32 meta[2];
+        if (fread(&key, sizeof(key), 1, f) != 1) break;
+        if (fread(meta, sizeof(meta), 1, f) != 1) break;
+        if (meta[1] > SDC_MAX_BIN) break;
+        if (meta[1] > 0 && fseek(f, (long)meta[1], SEEK_CUR) != 0) break;
+
+        if (cache_lookup(&key)) continue; /* already loaded from local cache */
+
+        memset(st, 0, sizeof(PCGXState));
+        state_from_key(&key, st);
+        char* frag_src = generate_frag(st);
+        if (!frag_src) continue;
+        GLuint prog = 0;
+        GLuint fs = compile_shader(GL_FRAGMENT_SHADER, frag_src);
+        if (fs) prog = link_with_vs(fs);
+        free(frag_src);
+        if (prog) {
+            cache_insert(&key, prog);
+            sdc_append(&key, prog); /* persist as driver binary for next boot */
+            compiled++;
+        }
+    }
+    free(st);
+    fclose(f);
+    if (compiled)
+        printf("[PC/TEV] Warmed %d shader(s) from seed during boot\n", compiled);
+}
+
 #endif /* SHADER_DISK_CACHE */
 
 /* ===================================================================
@@ -731,6 +821,9 @@ void pc_gx_tev_init(void) {
     /* Preload program binaries from previous runs — happens during boot,
      * before gameplay, so first visits to areas no longer compile mid-frame. */
     sdc_load();
+    /* First launch (or new configs in the seed): compile every known TEV
+     * config now, while the LOADING splash is up, instead of mid-gameplay. */
+    sdc_warm_from_seed();
 #endif
 }
 

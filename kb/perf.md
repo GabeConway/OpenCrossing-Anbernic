@@ -18,7 +18,24 @@
 5. New-area texture decode burst → NEON decoders + per-frame decode budget
    (8/frame, placeholder + retry). Trades hitch for 1-2 frames of pop-in.
 6. Per-draw driver overhead → GXBegin batch merging (quads/triangles with
-   unchanged state concatenate into one draw call).
+   unchanged state concatenate into one draw call). Kill switch:
+   PC_NO_DRAW_MERGE=1. GXSetViewport/GXSetScissor flush the open batch
+   (they apply GL state immediately — required for merge correctness).
+7. First-launch shader compiles (music stutter in menus, hitches) →
+   **seed warmup**: pc/shaders/shader_seed.bin ships driver-independent
+   ShaderKeys (43 configs harvested from a device playthrough; blobs
+   stripped); pc_gx_tev_init compiles all of them during the LOADING splash
+   and persists driver binaries. Regenerate seed: copy a well-traveled
+   shader_cache.bin and strip blobs (see kb/build-test.md).
+
+## -O2 regression (IMPORTANT)
+
+-O2 on decomp game code caused a wild-pointer crash loop on device from
+frame 1 (log: "CRASH #N in game frame ... addr=0xDC08093A", black screen
+with music). The UB-guard flags don't cover everything the decomp relies
+on. Game code is pinned at **-O1** in CMAKE_C(XX)_FLAGS_RELEASE; pc/
+platform sources keep per-source -O2/-O3. Do not raise game code past -O1
+without device-testing a full intro (KK Slider → train → town arrival).
 
 ## Measuring
 

@@ -13,7 +13,7 @@
   worked; audio dead. Root cause: 32-bit PipeWire couldn't find SPA plugins;
   ALSA fallback routed through the same broken plugin. Fixed via launcher env
   (SPA_PLUGIN_DIR/PIPEWIRE_MODULE_DIR → /usr/lib32, SDL_AUDIODRIVER list).
-- **2026-07-13** — **Pivot decision (Gabe)**: this is its own project now —
+- **2026-07-13** — **Pivot decision (maintainer)**: this is its own project now —
   "native Animal Crossing build for Anbernic" — not a tracking fork.
   Upstream/Dia credited in README but development is independent.
 - **2026-07-13** — Repo consolidation: renamed to

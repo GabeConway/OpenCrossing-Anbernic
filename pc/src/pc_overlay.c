@@ -208,9 +208,9 @@ static void menu_get_value(int item, char* buf, int sz) {
         snprintf(buf, sz, "%d%%", g_pc_settings.render_scale);
         break;
     case MI_WINDOW_SIZE: {
-        static const char* wsnames[] = {"320x240", "480x360", "640x480", "960x720", "1280x960", "Custom"};
+        static const char* wsnames[] = {"320x240", "480x360", "640x480", "960x720", "1280x960", "720x480", "Custom"};
         int w = g_pc_settings.window_size;
-        if (w < 0 || w > 5) w = 2;
+        if (w < 0 || w > 6) w = 6;
         snprintf(buf, sz, "%s", wsnames[w]);
         break;
     }
@@ -353,7 +353,7 @@ static void menu_adjust(int item, int dir) {
     }
     case MI_WINDOW_SIZE: {
         int v = g_pc_settings.window_size + dir;
-        if (v < 0) v = 4; if (v > 4) v = 0; /* skip Custom (5) from menu cycling */
+        if (v < 0) v = 5; if (v > 5) v = 0; /* skip Custom (6) from menu cycling */
         g_pc_settings.window_size = v;
         pc_settings_apply();
         break;

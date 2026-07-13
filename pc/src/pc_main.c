@@ -338,9 +338,10 @@ void pc_platform_update_window_size(void) {
      * In windowed mode the drawable size IS the window size, so use it directly. */
     int base_w, base_h;
     if ((g_pc_settings.fullscreen == 1 || g_pc_settings.fullscreen == 2)
-        && g_pc_settings.window_size >= 0 && g_pc_settings.window_size < 5) {
-        static const int presets[5][2] = {
+        && g_pc_settings.window_size >= 0 && g_pc_settings.window_size < 6) {
+        static const int presets[6][2] = {
             {320, 240}, {480, 360}, {640, 480}, {960, 720}, {1280, 960},
+            {720, 480},
         };
         base_w = presets[g_pc_settings.window_size][0];
         base_h = presets[g_pc_settings.window_size][1];

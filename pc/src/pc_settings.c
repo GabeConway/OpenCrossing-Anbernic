@@ -18,7 +18,7 @@ PCSettings g_pc_settings = {
     .fullscreen    = 0,
     .vsync         = 0,
     .msaa          = 4,
-    .preload_textures = 0,
+    .preload_textures = 2,  /* preload + cache file (only acts when a texture pack exists) */
     .frameskip = 0,
     .verbose = 0,
     .show_fps = 0,
@@ -29,7 +29,7 @@ PCSettings g_pc_settings = {
     .zoom_enabled = 1,
     .fps_target    = 0,    /* 60fps default */
     .render_scale  = 100,
-    .window_size   = 2,    /* 640x480 default */
+    .window_size   = 2,    /* 640x480 default (matches device screen) */
     .scale_mode    = 0,
     .dpad_as_stick  = 0,
     .left_deadzone  = 0,
@@ -64,7 +64,7 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "[Enhancements]\n"
     "# Preload HD textures at startup: 0 = off (load on demand), 1 = preload, 2 = preload + cache file (fastest)\n"
-    "preload_textures = 0\n"
+    "preload_textures = 2\n"
     "\n"
     "[Performance]\n"
     "# FPS target: 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=dynamic\n"
@@ -73,8 +73,8 @@ static const char* DEFAULT_SETTINGS =
     "# Render scale %%: 100=native, 75, 50, 25 (lower = faster on limited hardware)\n"
     "render_scale = 100\n"
     "\n"
-    "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom\n"
-    "window_size = 2\n"
+    "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=720x480 (device native), 6=custom\n"
+    "window_size = 5\n"
     "\n"
     "# Scale mode: 0=stretch to fill screen, 1=center (letterbox)\n"
     "scale_mode = 0\n"
@@ -168,7 +168,7 @@ static void apply_setting(const char* key, const char* value) {
         if (val == 25 || val == 50 || val == 75 || val == 100)
             g_pc_settings.render_scale = val;
     } else if (strcmp(key, "window_size") == 0) {
-        if (val >= 0 && val <= 5) g_pc_settings.window_size = val;
+        if (val >= 0 && val <= 6) g_pc_settings.window_size = val;
     } else if (strcmp(key, "scale_mode") == 0) {
         if (val == 0 || val == 1) g_pc_settings.scale_mode = val;
     } else if (strcmp(key, "verbose") == 0) {
@@ -325,12 +325,13 @@ void pc_settings_reset_controllers(void) {
 }
 
 /* Window size preset table: {width, height} */
-static const int s_window_presets[5][2] = {
+static const int s_window_presets[6][2] = {
     {320, 240},
     {480, 360},
     {640, 480},
     {960, 720},
     {1280, 960},
+    {720, 480},   /* device-native (RG-34XX SP) — default */
 };
 
 /* FPS target enum -> actual Hz */
@@ -340,7 +341,7 @@ void pc_settings_apply(void) {
     if (!g_pc_window) return;
 
     /* Resolve window size from preset (unless custom) */
-    if (g_pc_settings.window_size >= 0 && g_pc_settings.window_size < 5) {
+    if (g_pc_settings.window_size >= 0 && g_pc_settings.window_size < 6) {
         g_pc_settings.window_width  = s_window_presets[g_pc_settings.window_size][0];
         g_pc_settings.window_height = s_window_presets[g_pc_settings.window_size][1];
     }

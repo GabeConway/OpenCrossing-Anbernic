@@ -20,9 +20,12 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 # NOTE: these overrides previously carried no -O level at all, so everything
 # not covered by a per-source COMPILE_OPTIONS -O2 (i.e. all decomp game code)
-# built unoptimized. -O2 here is a large speedup on the handheld targets.
-set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+# built unoptimized. -O1 for game code: -O2 caused wild-pointer crash loops
+# on device (game frame CRASH spam at 0xDC08093A from boot) — decomp code
+# relies on more UB than the guard flags cover. pc/ platform sources keep
+# their per-source -O2/-O3. If -O1 also misbehaves, drop this back to no -O.
+set(CMAKE_C_FLAGS_RELEASE "-O1 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
 
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)

@@ -430,7 +430,9 @@ void GXBegin(u32 primitive, u32 vtxfmt, u16 nverts) {
      * concatenated into one draw call. Only list primitives merge safely
      * (strips/fans would bridge geometry across batches). Mali per-draw
      * driver overhead is significant; typical scenes merge many calls. */
-    if (g_gx.in_begin && g_gx.dirty == 0 &&
+    static int s_no_merge = -1;
+    if (s_no_merge < 0) s_no_merge = (getenv("PC_NO_DRAW_MERGE") != NULL);
+    if (!s_no_merge && g_gx.in_begin && g_gx.dirty == 0 &&
         (g_gx.current_primitive == GX_QUADS || g_gx.current_primitive == GX_TRIANGLES) &&
         primitive == (u32)g_gx.current_primitive &&
         vtxfmt == (u32)g_gx.current_vtxfmt &&
@@ -1165,6 +1167,9 @@ void GXSetCurrentMtx(u32 id) {
 }
 
 void GXSetViewport(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz) {
+    /* glViewport applies immediately — a buffered-but-unflushed batch would
+     * otherwise draw with the NEW viewport. Also required for batch merging. */
+    pc_gx_flush_if_begin_complete();
     g_gx.viewport[0] = left;
     g_gx.viewport[1] = top;
     g_gx.viewport[2] = wd;
@@ -1212,6 +1217,9 @@ void GXSetViewportJitter(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz,
 }
 
 void GXSetScissor(u32 left, u32 top, u32 wd, u32 ht) {
+    /* glScissor applies immediately — flush buffered geometry first (see
+     * GXSetViewport). Also required for batch merging correctness. */
+    pc_gx_flush_if_begin_complete();
     g_gx.scissor[0] = left;
     g_gx.scissor[1] = top;
     g_gx.scissor[2] = wd;

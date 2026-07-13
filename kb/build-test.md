@@ -41,14 +41,27 @@ pc/src/pc_stubs.c (`#ifndef __APPLE__` cKF stubs).
 
 ## Compile flags (don't regress)
 
-- `CMAKE_C(XX)_FLAGS_RELEASE` in pc/CMakeLists.txt MUST keep `-O2` — these
-  overrides replace CMake's defaults entirely, and they historically shipped
-  with no -O at all (game code at -O0).
+- `CMAKE_C(XX)_FLAGS_RELEASE` in pc/CMakeLists.txt MUST keep an explicit
+  `-O1` — these overrides replace CMake's defaults entirely, and they
+  historically shipped with no -O at all (game code at -O0).
 - The UB-guard flags next to it (-fno-delete-null-pointer-checks etc.) exist
   because decomp code relies on UB; keep them when touching optimization.
 - `pc_gx_texture.c` gets per-source -O3 (set_source_files_properties uses the
   `${CMAKE_CURRENT_SOURCE_DIR}/src/...` absolute form — must match how
   PC_SOURCES lists it).
+- Game (decomp) code is capped at **-O1** — -O2 crash-loops on device
+  (see kb/perf.md "-O2 regression").
+
+## Shader seed (pc/shaders/shader_seed.bin)
+
+Keys-only copy of a shader_cache.bin (same header, per-entry blob length 0).
+Compiled during the boot splash on first launch so gameplay never compiles a
+known shader. Regenerate after content that introduces new TEV configs:
+take a device shader_cache.bin that has seen the new content and strip the
+blobs (each entry = 72-byte key + two u32 meta + blob; write meta {0,0} and
+no blob; dedupe keys; keep the 12-byte header). Bump SDC_VERSION in
+pc_gx_tev.c whenever ShaderKey layout or generated GLSL changes — that
+invalidates both local caches and the seed format together.
 
 ## CI / releases
 
