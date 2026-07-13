@@ -177,6 +177,9 @@ typedef struct {
     ShaderKey key;
     GLuint program;
     PCGXUniformLocs locs;  /* resolved once at link time */
+    /* Generation of each uniform group this program last uploaded
+     * (pc_gx_flush_vertices reads/writes via pc_gx_tev_last_gens). */
+    unsigned int gens[PC_GX_UNIFORM_GROUP_COUNT];
     int valid;
 } SCacheEntry;
 
@@ -184,6 +187,8 @@ static SCacheEntry s_cache[SCACHE_SIZE];
 
 /* Locations of the program returned by the last pc_gx_tev_get_shader call */
 const PCGXUniformLocs* pc_gx_tev_last_locs = NULL;
+/* Uploaded-generation record of that same program */
+unsigned int* pc_gx_tev_last_gens = NULL;
 
 static u32 hash_key(const ShaderKey* k) {
     const u8* p = (const u8*)k;
@@ -224,6 +229,9 @@ static SCacheEntry* cache_insert(const ShaderKey* k, GLuint prog) {
     e->key = *k;
     e->program = prog;
     e->valid = 1;
+    /* Fresh program holds no uploaded uniforms — also matters on the
+     * eviction path above, where the slot carries a stale record. */
+    memset(e->gens, 0, sizeof(e->gens));
     pc_gx_fill_uniform_locations(prog, &e->locs);
     return e;
 }
@@ -575,6 +583,7 @@ static char* generate_frag(PCGXState* st) {
 /* Fallback uber-shader (loaded from files, used if specialization fails) */
 static GLuint s_fallback = 0;
 static PCGXUniformLocs s_fallback_locs;
+static unsigned int s_fallback_gens[PC_GX_UNIFORM_GROUP_COUNT];
 
 /* ===================================================================
  * Program binary disk cache (shader_cache.bin in the working dir,
@@ -837,6 +846,8 @@ void pc_gx_tev_shutdown(void) {
     if (s_fallback) { glDeleteProgram(s_fallback); s_fallback = 0; }
     if (s_vs) { glDeleteShader(s_vs); s_vs = 0; }
     pc_gx_tev_last_locs = NULL;
+    pc_gx_tev_last_gens = NULL;
+    memset(s_fallback_gens, 0, sizeof(s_fallback_gens));
 }
 
 GLuint pc_gx_tev_get_shader(PCGXState* state) {
@@ -847,6 +858,7 @@ GLuint pc_gx_tev_get_shader(PCGXState* state) {
     SCacheEntry* e = cache_lookup(&key);
     if (e) {
         pc_gx_tev_last_locs = &e->locs;
+        pc_gx_tev_last_gens = e->gens;
         return e->program;
     }
 
@@ -868,6 +880,7 @@ GLuint pc_gx_tev_get_shader(PCGXState* state) {
     if (prog) {
         e = cache_insert(&key, prog);
         pc_gx_tev_last_locs = &e->locs;
+        pc_gx_tev_last_gens = e->gens;
 #ifdef SHADER_DISK_CACHE
         sdc_append(&key, prog);
 #endif
@@ -879,5 +892,6 @@ GLuint pc_gx_tev_get_shader(PCGXState* state) {
 
     /* Fall back to uber-shader */
     pc_gx_tev_last_locs = &s_fallback_locs;
+    pc_gx_tev_last_gens = s_fallback_gens;
     return s_fallback;
 }

@@ -29,6 +29,7 @@ static int s_logic_tick_count = 0;
 /* --- Dynamic FPS controller state --- */
 static double s_dyn_ema_us = 0.0;
 static int    s_dyn_inited = 0;
+static int    s_dyn_probe_countdown = 0;
 
 void VIInit(void) { }
 
@@ -41,6 +42,7 @@ void VIFlush(void) {}
 void pc_dynamic_fps_reset(void) {
     s_dyn_ema_us = 0.0;
     s_dyn_inited = 0;
+    s_dyn_probe_countdown = 0;
 }
 
 static void pc_dynamic_fps_update(Uint64 work_us) {
@@ -60,6 +62,24 @@ static void pc_dynamic_fps_update(Uint64 work_us) {
     if (fps_opt > 60.0) fps_opt = 60.0;
     if (fps_opt < 10.0) fps_opt = 10.0;
     g_pc_fps_target = (int)(fps_opt + 0.5);
+
+    /* Upward probe: the batch measurement is bistable — at a low target the
+     * batch carries more frameskip logic ticks (and swap-wait rounding), so
+     * measured work stays high and the low target sustains itself even when
+     * the scene could run faster (device symptom: outdoor area locked at 30
+     * until a cheap interior visit reset it). Periodically assume headroom
+     * and let the EMA re-converge; if the load is real, it climbs back
+     * within ~4 frames. PC_NO_FPS_PROBE=1 disables. */
+    {
+        static int s_no_probe = -1;
+        if (s_no_probe < 0) s_no_probe = (getenv("PC_NO_FPS_PROBE") != NULL);
+        if (!s_no_probe && g_pc_fps_target < 60) {
+            if (--s_dyn_probe_countdown <= 0) {
+                s_dyn_probe_countdown = 120;  /* render frames: ~2-4s */
+                s_dyn_ema_us *= 0.5;
+            }
+        }
+    }
 }
 
 void VIWaitForRetrace(void) {

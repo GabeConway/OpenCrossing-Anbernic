@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "name": "acgc.zip",
+  "items": [
+    "Animal Crossing.sh",
+    "acgc"
+  ],
+  "items_opt": null,
+  "attr": {
+    "title": "Animal Crossing",
+    "desc": "Native ARM port of the Animal Crossing (GameCube) decompilation. Not emulation: the decompiled game code runs directly on the device, with a GX-to-OpenGL-ES translation layer for Mali GPUs. Requires your own Animal Crossing (USA, GAFE01) disc image.",
+    "inst": "Copy your own 'Animal Crossing.iso' (USA, GAFE01) into ports/acgc/rom/.",
+    "genres": [
+      "simulation"
+    ],
+    "porter": [
+      "GabeConway"
+    ],
+    "image": null,
+    "rtr": false,
+    "runtime": null,
+    "reqs": [],
+    "arch": [
+      "armhf"
+    ]
+  }
+}

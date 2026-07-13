@@ -1,5 +1,12 @@
 # Performance knowledge & playbook
 
+## Current state (2026-07-13, v0.2.0)
+
+FPS ranges between 60 and 30 depending on what's going on — steady areas
+hold 55-60, heavy moments (walking fast across acre grids while they
+stream in) can dip to ~30 worst case. Long-term goal: 60 fps stable, or
+at least most of the time. Game speed holds ~100% throughout (dynamic fps).
+
 ## Fixed so far (chronological, 2026-07-13)
 
 1. ~150 glGetUniformLocation per shader switch → per-program `PCGXUniformLocs`
@@ -46,8 +53,66 @@ testing a full new-game intro (KK Slider → train → town arrival).
 SIGBUS is now caught by the crash-recovery handler (pc_main.c) and stdout
 is line-buffered, so future device logs show the crash context.
 
+9. **GX state-set dedup** (2026-07-13, DEVICE-VERIFIED same day: smoother,
+   better 1% lows, acre loads clean, ~30 fps avg walking during acre loads;
+   no visual regressions reported): decomp re-sets
+   identical GX state constantly; every set flushed the open batch, which is
+   why 500+ draws survived merging. All hot setters (TEV, blend/depth/cull,
+   lighting, texgen, matrices, viewport/scissor, GXLoadTexObj) now compare
+   against current state and early-return on no-ops — no flush, no dirty, so
+   GXBegin merging spans them. Viewport/scissor shadow the *computed GL*
+   values (invalidated in pc_gx_begin_frame + restore_after_nes since
+   overlay/begin_frame touch GL viewport directly). GXLoadTexObj does the
+   pure-CPU cache lookup before any flush and no-ops when the map already
+   holds the same GL texture + sampler state; texture-cache invalidate clears
+   g_gx.gl_textures so freed/reissued GL ids can't fool the check.
+   Kill switch: PC_NO_STATE_DEDUP=1.
+   **Device log numbers (2026-07-13 SD mount, P1 build)**: avg 271
+   draws/frame (max 665; was 491-600), avg gl=9.1ms (max 26; was 15-26),
+   avg 52.4 fps with 63% of samples ≥55 fps, avg speed 99%, 0 crashes,
+   0 audio underruns. P1 roughly halved draw count and gl time.
+
+10. **Per-program uniform value shadowing** (2026-07-13, P2,
+    DEVICE-VERIFIED same day: "slightly better", worst case now ~30 fps
+    during fast acre-grid walking — shipped in v0.2.0): shader switch no longer sets dirty=ALL (was re-uploading every
+    uniform group ~each switch, and switches happen constantly at 500+
+    draws/frame). Every real state change bumps a per-group generation
+    counter (`pc_gx_mark_dirty`, bits 0-11 = uniform groups); each program
+    (tev cache entry + fallback) records the generation it last uploaded per
+    group; flush uploads only mismatched groups and records them. GL-state
+    groups (depth/colormask/cull/blend, bits 12-15) stay on plain g_gx.dirty
+    — they're global GL state, not per-program. Gens bumped for ALL groups
+    only when GL touched outside GX layer (`pc_gx_dirty_all`: init,
+    restore_after_nes; NES clobbers texture-unit bindings, which ride the
+    TEXTURES group). Eviction path in tev cache_insert resets the slot's gen
+    record. Kill switch: PC_NO_UNIFORM_SHADOW=1 (restores dirty=ALL on
+    switch). Two correctness fixes shipped with it: (a) pc_gx_begin_frame
+    forces depth/color masks for glClear — now DIRTYs DEPTH|COLOR_MASK so a
+    deduped same-value re-set can't leave the forced masks active; (b)
+    frameskip flush no longer clears g_gx.dirty (it applied nothing to GL, so
+    clearing dropped GL-state changes made during skipped frames).
+
+12. **Seed regrown 43 → 101 configs** (2026-07-13, from a device
+    shader_cache.bin after a longer playthrough incl. interiors): the P1
+    session log showed 24 mid-session "[PC/TEV] Compiled specialized shader"
+    hitches (each a mid-frame Mali compile; the worst gl-dominated stutters,
+    e.g. gl=344ms at 31 draws, line up with these). Old 43-key seed is a
+    strict subset. Deployed to SD same day. Regrow again whenever logs show
+    mid-session compiles.
+
+11. **Dynamic-fps upward probe** (2026-07-13, P2.5, DEVICE-VERIFIED same
+    day: no more 30-lock after area loads — shipped in v0.2.0):
+    governor was bistable — low target ⇒ more logic ticks per measured
+    batch ⇒ measured work stays high ⇒ low target self-sustains (device:
+    outdoor 30 fps until a house visit reset it to 60). When target < 60,
+    every 120 render frames the EMA halves to re-test headroom; genuine
+    load re-converges in ~4 frames. Kill switch PC_NO_FPS_PROBE=1.
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe
+- PC_NO_UNIFORM_SHADOW=1 — disable per-program uniform value shadowing
+- PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)
 - PC_NO_DRAW_MERGE=1 — disable GXBegin draw-call merging
 - PC_NO_NEON_DECODE=1 — scalar texture decoders
 - PC_NO_DECODE_BUDGET=1 — decode every texture the frame it's requested
