@@ -239,12 +239,20 @@ static void pc_gx_dirty_all(void) {
 /* Streaming VBO: instead of orphaning + re-uploading the whole VBO with
  * glBufferData on every flush (device log: ~29.5µs/draw, ~16ms of gl time
  * at 550 draws/frame), append each batch at a running offset in one large
- * buffer with glBufferSubData and rebase the attrib pointers to the batch
- * start. The buffer is orphaned only on wrap, so the driver never has to
- * allocate or synchronize per draw. PC_NO_STREAM_VBO=1 falls back to the
- * per-flush orphan path. */
+ * buffer, orphaned only on wrap, so the driver never has to allocate or
+ * synchronize per draw. Upload via glMapBufferRange(UNSYNCHRONIZED) with a
+ * glBufferSubData fallback (PC_STREAM_SUBDATA=1 forces it). Draws use
+ * glDrawElementsBaseVertex / glDrawArrays(first) so attrib pointers are
+ * never respecified when the driver has BaseVertex (GLES 3.2 core); older
+ * drivers fall back to rebasing the attrib pointers per batch. The first
+ * ~2000 flushes poll glGetError and drop to the legacy per-flush orphan
+ * path (with a log line) if the driver rejects any of it.
+ * PC_NO_STREAM_VBO=1 forces the legacy path. */
 #define PC_GX_STREAM_VERTS (128 * 1024)  /* 128k verts * 48B = 6MB */
 static int        s_stream_vbo = 1;
+static int        s_stream_subdata = 0;   /* force glBufferSubData upload */
+static int        s_has_base_vertex = 0;
+static int        s_stream_probe = 0;     /* flushes still GL-error-checked */
 static GLsizeiptr s_stream_offset = 0;    /* in vertices */
 static GLsizeiptr s_attrib_base = -1;     /* attrib pointers' current base */
 
@@ -272,8 +280,14 @@ void pc_gx_init(void) {
     pc_gx_state_dedup = (getenv("PC_NO_STATE_DEDUP") == NULL);
     pc_gx_uniform_shadow = (getenv("PC_NO_UNIFORM_SHADOW") == NULL);
     s_stream_vbo = (getenv("PC_NO_STREAM_VBO") == NULL);
+    s_stream_subdata = (getenv("PC_STREAM_SUBDATA") != NULL);
+    s_has_base_vertex = (glDrawElementsBaseVertex != NULL);
+    s_stream_probe = 0;
     s_stream_offset = 0;
     s_attrib_base = -1;
+    if (s_stream_vbo)
+        printf("[PC/GX] streaming VBO on (upload=%s, base_vertex=%d)\n",
+               s_stream_subdata ? "subdata" : "map", s_has_base_vertex);
 
     g_gx.projection_type = GX_PERSPECTIVE;
     g_gx.num_tev_stages = 1;
@@ -836,23 +850,30 @@ void pc_gx_flush_vertices(void) {
     }
 
     /* VAO/VBO stay bound from init. */
+    GLsizeiptr draw_base = 0;
     if (s_stream_vbo) {
         /* Append at the running offset; orphan only on wrap so the driver
          * never synchronizes against in-flight draws. */
+        GLsizeiptr bytes = (GLsizeiptr)count * sizeof(PCGXVertex);
         if (s_stream_offset + count > PC_GX_STREAM_VERTS) {
             glBufferData(GL_ARRAY_BUFFER, PC_GX_STREAM_VERTS * sizeof(PCGXVertex), NULL, GL_STREAM_DRAW);
             s_stream_offset = 0;
         }
-        glBufferSubData(GL_ARRAY_BUFFER, s_stream_offset * sizeof(PCGXVertex),
-                        count * sizeof(PCGXVertex), g_gx.vertex_buffer);
-        if (s_attrib_base != s_stream_offset)
-            pc_gx_set_attrib_base(s_stream_offset);
+        void* dst = NULL;
+        if (!s_stream_subdata && glMapBufferRange)
+            dst = glMapBufferRange(GL_ARRAY_BUFFER, s_stream_offset * sizeof(PCGXVertex), bytes,
+                                   GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+        if (dst) {
+            memcpy(dst, g_gx.vertex_buffer, bytes);
+            glUnmapBuffer(GL_ARRAY_BUFFER);
+        } else {
+            glBufferSubData(GL_ARRAY_BUFFER, s_stream_offset * sizeof(PCGXVertex), bytes, g_gx.vertex_buffer);
+        }
+        draw_base = s_stream_offset;
         s_stream_offset += count;
     } else {
-        /* Fallback: orphan + upload the whole VBO per flush */
+        /* Legacy: orphan + upload the whole VBO per flush */
         glBufferData(GL_ARRAY_BUFFER, count * sizeof(PCGXVertex), g_gx.vertex_buffer, GL_STREAM_DRAW);
-        if (s_attrib_base != 0)
-            pc_gx_set_attrib_base(0);
     }
 
     /* Upload only dirty state groups */
@@ -1154,11 +1175,41 @@ void pc_gx_flush_vertices(void) {
     if (g_gx.current_primitive == GX_QUADS) {
         int num_quads = count / 4;
         int num_indices = num_quads * 6;
-        glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0);
+        if (draw_base == 0 || s_has_base_vertex) {
+            if (s_attrib_base != 0)
+                pc_gx_set_attrib_base(0);
+            if (draw_base == 0)
+                glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0);
+            else
+                glDrawElementsBaseVertex(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0, (GLint)draw_base);
+        } else {
+            /* No BaseVertex (pre-3.2 driver): rebase attrib pointers instead */
+            if (s_attrib_base != draw_base)
+                pc_gx_set_attrib_base(draw_base);
+            glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_SHORT, 0);
+        }
         PC_GL_CHECK("glDrawElements");
     } else {
-        glDrawArrays(gl_prim, 0, count);
+        /* glDrawArrays takes the base directly — attribs stay at 0 */
+        if (s_attrib_base != 0)
+            pc_gx_set_attrib_base(0);
+        glDrawArrays(gl_prim, (GLint)draw_base, count);
         PC_GL_CHECK("glDrawArrays");
+    }
+
+    /* Early-session GL-error probe: if the driver rejects any of the
+     * streaming path (some Mali blobs are picky about it), log the error
+     * and drop to the legacy per-flush upload for the rest of the run. */
+    if (s_stream_vbo && s_stream_probe < 2000) {
+        s_stream_probe++;
+        GLenum probe_err = glGetError();
+        if (probe_err != GL_NO_ERROR) {
+            printf("[PC/GX] streaming VBO GL error 0x%04X at flush %d — using legacy path\n",
+                   (unsigned)probe_err, s_stream_probe);
+            s_stream_vbo = 0;
+            if (s_attrib_base != 0)
+                pc_gx_set_attrib_base(0);
+        }
     }
 
     if (g_gx.blend_mode == GX_BM_SUBTRACT)
