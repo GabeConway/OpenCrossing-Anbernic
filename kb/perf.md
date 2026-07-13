@@ -144,8 +144,31 @@ is line-buffered, so future device logs show the crash context.
     time so they become mergeable with triangle batches (strips/fans
     never merge today, see GXBegin merging rules).
 
+14. **P4: strip/fan→triangle conversion + whole-batch CPU cull + batch
+    diagnostics** (2026-07-13, deployed to SD, awaiting device test; smoke
+    2x PASS, Mesa screenshot A/B clean — geometry/winding correct):
+    (a) GXBegin converts TRIANGLESTRIP/TRIANGLEFAN to independent triangle
+    lists at vertex accumulation (winding-preserving, fan pivots on v0) so
+    they merge like triangle batches — strips/fans never merged before.
+    Kill switch PC_NO_STRIP_CONVERT=1. Completion tracked on SOURCE vertex
+    count (s_conv_src_*), expected_vertex_count now counts EMITTED verts.
+    (b) Whole-batch CPU frustum cull at flush: object-space AABB, 8 corners
+    through exact shader transform (clip = P*MV*pos), homogeneous
+    half-space test (all 8 corners outside same plane ⇒ skip). Culled
+    batches skip draw + ALL uniform upload, dirty stays set (frameskip
+    pattern). Kill switch PC_NO_BATCH_CULL=1. Qemu smoke intro scene:
+    culled 139-159 vs drawn 147-200 per frame (~45% of batches).
+    (c) PERF line extended: per-prim draw counts (q/t/s/f/o), merged=,
+    culled=, and batch-break attribution (breaks: begin/vp/mv/tex/tevc/
+    tevs/light/oth) — first dirty-group set after a real flush claims it.
+    Smoke data: mv (matrix loads) dominates breaks (206-241/frame, ~70%)
+    ⇒ next lever after this: CPU pre-transform of positions at accumulation
+    so matrix changes stop breaking batches (then merging spans objects).
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_STRIP_CONVERT=1 — disable strip/fan→triangle conversion (P4)
+- PC_NO_BATCH_CULL=1 — disable whole-batch CPU frustum cull (P4)
 - PC_NO_STREAM_VBO=1 — disable streaming VBO (per-flush orphan fallback)
 - PC_STREAM_SUBDATA=1 — streaming VBO uploads via glBufferSubData not map
 - PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe

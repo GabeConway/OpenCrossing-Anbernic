@@ -11,13 +11,16 @@
   (streaming VBO, device-verified working) — it is raw draw-dispatch
   overhead in the Mali blob. Every sub-35fps run is a 487-578-draw scene
   (~550 × 30µs ≈ 16ms gl = whole 60fps budget); no governor locks left.
-  **NEXT LEVER (not yet approved): reduce draw COUNT** — convert
-  triangle strips/fans to indexed triangles at accumulation time so they
-  merge with triangle batches (strips/fans never merge today; see
-  GXBegin merge rules in kb/renderer.md). Measure strip/fan share of
-  draws first (add a per-primitive draw counter to the PERF line).
-  Other levers: per-TU -O2 on loader/decompression TUs (264 work
-  stutters, avg 42ms), iso read-ahead.
+  **P4 SHIPPED 2026-07-13 (deployed to SD, awaiting device test)**:
+  strip/fan→triangle conversion (merge-capable) + whole-batch CPU
+  frustum cull + PERF batch diagnostics (kb/perf.md #14). Qemu smoke:
+  cull removes ~45% of intro-scene batches; strips/fans fully converted.
+  Next device log: check draws/culled/merged + breaks fields. Breaks
+  data already shows matrix loads (mv=206-241/frame) as the dominant
+  batch breaker ⇒ next lever: CPU pre-transform of positions at
+  accumulation (kill MODELVIEW as a batch breaker), then merging spans
+  objects. Other levers: per-TU -O2 on loader/decompression TUs (264
+  work stutters, avg 42ms), iso read-ahead.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
