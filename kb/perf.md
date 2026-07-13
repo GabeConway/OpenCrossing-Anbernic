@@ -21,6 +21,13 @@
    unchanged state concatenate into one draw call). Kill switch:
    PC_NO_DRAW_MERGE=1. GXSetViewport/GXSetScissor flush the open batch
    (they apply GL state immediately — required for merge correctness).
+   Device data 2026-07-13: still 491-600 draws/frame in town, gl=15-26ms —
+   per-draw overhead is the current #1 bottleneck (see kb/issues.md).
+8. emu64.c + emu64_utility.c at -O2 (per-TU, with gnu89 + UB guards):
+   device-verified safe (train intro passes, crashes=0), home area
+   36 → 35-40 fps. Template for optimizing further decomp TUs one at a
+   time; next candidates: decompression/loader TUs behind the 8.7s menu
+   stall, m_field/actor update paths.
 7. First-launch shader compiles (music stutter in menus, hitches) →
    **seed warmup**: pc/shaders/shader_seed.bin ships driver-independent
    ShaderKeys (43 configs harvested from a device playthrough; blobs

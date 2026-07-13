@@ -11,11 +11,24 @@
   emu64.c `dl_G_NOOP` (marker handling), m_play.c ~688/738 (marker emission),
   pc_gx.c GXSetProjection/GXSetViewport mode-2 remap, EFB capture path in
   pc_gx_copy_tex_execute / GXLoadTexObj bypass. Fix needs device A/B.
-- **Main-area perf** (2026-07-13): ~36 fps render in home area; PERF-tab
-  toggles (shadows/acres/particles) barely move it → not render-volume
-  bound. Current experiment: emu64.c + emu64_utility.c at -O2 (rest of
-  decomp stays unoptimized — see kb/perf.md "-O2 regression").
-  Awaiting device verbose log for work/gl/tex attribution.
+- **Main-area perf — NEXT TARGET: per-draw GL overhead** (2026-07-13,
+  measured on device): steady frames 42ms with gl=25ms at 491-600 draws
+  (~40-50µs/draw), tex=0.0 (texture pipeline fully solved), speed 94-100%
+  (dynamic fps working). emu64 -O2 experiment SHIPPED SAFE (train passes,
+  crashes=0) and improved home area 36→35-40 fps. PERF-tab toggles don't
+  matter because draw dispatch, not scene volume, is the cost. Leads, in
+  order: (1) per-draw glBufferData orphan → one big VBO with offset
+  accumulation per frame; (2) uniform re-upload on shader switch
+  (dirty=ALL) → per-program uniform value shadowing so unchanged values
+  skip upload; (3) why do 500+ draws survive merging — likely
+  GXLoadTexObj-driven flushes; consider binding-change-only fast path that
+  doesn't break the batch when the texture object is identical.
+- **One-time 8.7s stall on home menu** (device log frame 606: work=8746ms,
+  gl=13ms, tex=0): pure game-side stall — synchronous iso reads
+  (pc_disc/pc_dvd fread on SD) and/or decompression in unoptimized decomp
+  code during menu/save load. Leads: add timing counters to pc_dvd_read /
+  pc_disc reads, consider read-ahead thread or optimizing the decomp's
+  decompression TUs (same per-TU -O2 pattern as emu64).
 
 ## Resolved (keep for pattern-matching)
 
