@@ -44,6 +44,9 @@ fi
 
 export XDG_DATA_HOME="$CONFDIR"
 export LD_LIBRARY_PATH="/usr/lib32:$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
+# 32-bit pipewire client can't load its SPA support plugin on muOS;
+# route audio through the ALSA->PipeWire bridge instead.
+export SDL_AUDIODRIVER=alsa
 export SDL_GAMECONTROLLERCONFIG="$sdl_controllerconfig"
 chmod +x "$GAMEDIR/AnimalCrossing"
 
