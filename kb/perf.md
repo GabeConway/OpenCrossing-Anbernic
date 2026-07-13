@@ -60,6 +60,10 @@ is line-buffered, so future device logs show the crash context.
    holds the same GL texture + sampler state; texture-cache invalidate clears
    g_gx.gl_textures so freed/reissued GL ids can't fool the check.
    Kill switch: PC_NO_STATE_DEDUP=1.
+   **Device log numbers (2026-07-13 SD mount, P1 build)**: avg 271
+   draws/frame (max 665; was 491-600), avg gl=9.1ms (max 26; was 15-26),
+   avg 52.4 fps with 63% of samples ≥55 fps, avg speed 99%, 0 crashes,
+   0 audio underruns. P1 roughly halved draw count and gl time.
 
 10. **Per-program uniform value shadowing** (2026-07-13, P2, awaiting device
     test): shader switch no longer sets dirty=ALL (was re-uploading every
@@ -79,6 +83,14 @@ is line-buffered, so future device logs show the crash context.
     deduped same-value re-set can't leave the forced masks active; (b)
     frameskip flush no longer clears g_gx.dirty (it applied nothing to GL, so
     clearing dropped GL-state changes made during skipped frames).
+
+12. **Seed regrown 43 → 101 configs** (2026-07-13, from a device
+    shader_cache.bin after a longer playthrough incl. interiors): the P1
+    session log showed 24 mid-session "[PC/TEV] Compiled specialized shader"
+    hitches (each a mid-frame Mali compile; the worst gl-dominated stutters,
+    e.g. gl=344ms at 31 draws, line up with these). Old 43-key seed is a
+    strict subset. Deployed to SD same day. Regrow again whenever logs show
+    mid-session compiles.
 
 11. **Dynamic-fps upward probe** (2026-07-13, P2.5, awaiting device test):
     governor was bistable — low target ⇒ more logic ticks per measured

@@ -50,6 +50,12 @@
   code during menu/save load. Leads: add timing counters to pc_dvd_read /
   pc_disc reads, consider read-ahead thread or optimizing the decomp's
   decompression TUs (same per-TU -O2 pattern as emu64).
+  2026-07-13 P1-build log confirms pattern persists: 3 zero-draw stalls,
+  worst 3.2s (work=3222ms, gl≈0, draws=0). Now the top remaining stutter
+  class alongside work-dominated moderate stutters (268 of 345 STUTTER
+  lines were work-dominated; gl-dominated was 74, of which the worst were
+  mid-session shader compiles — seed regrown to 101 configs to kill those,
+  kb/perf.md #12).
 
 ## Resolved (keep for pattern-matching)
 
