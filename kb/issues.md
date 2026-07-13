@@ -6,14 +6,16 @@
   test of v0.2.0): overall range is 60↔30 depending on scene; steady areas
   hold 55-60, acre-streaming walks dip to ~30 worst case. Long-term goal:
   60 stable / most of the time (kb/perf.md "Current state").
-  P1-log quantification: per-draw GL cost ≈ **29.3µs/draw** (regression
-  over 1521 PERF samples, intercept 1.1ms) — heavy 491-draw scenes cost
-  ~15-19ms gl alone, genuinely capping ~30-35 fps regardless of governor
-  (longest sub-35fps run, 18s, was such a scene: draws=491 gl=19.3ms at
-  98% speed). So the dips = real per-draw overhead → **P3 (VBO orphan /
-  fewer-larger draws) is justified**; re-measure slope on a v0.2.0 log
-  first to see how much P2 uniform shadowing already cut. Other levers:
-  per-TU -O2 on loader/decompression TUs, iso read-ahead.
+  v0.2.0-log verdict (2026-07-13): per-draw GL cost **29.5µs/draw**
+  (unchanged from P1's 29.3 — P2 uniform shadowing didn't move it, so
+  the cost is glBufferData orphan + draw dispatch). EVERY sub-35fps run
+  is a 487-578-draw scene at gl 18-19ms — real load, no governor locks
+  left. ~550 draws × 29.5µs ≈ 16ms of gl per frame = the whole 60fps
+  budget. **P3 (one big VBO with per-frame offset accumulation, fewer/
+  larger driver calls) is THE lever for the 30fps dips** — halving
+  per-draw cost would lift the heavy scenes to ~45. Other levers:
+  per-TU -O2 on loader/decompression TUs (264 work stutters, avg 42ms),
+  iso read-ahead.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the

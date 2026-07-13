@@ -74,7 +74,12 @@ is line-buffered, so future device logs show the crash context.
 
 10. **Per-program uniform value shadowing** (2026-07-13, P2,
     DEVICE-VERIFIED same day: "slightly better", worst case now ~30 fps
-    during fast acre-grid walking — shipped in v0.2.0): shader switch no longer sets dirty=ALL (was re-uploading every
+    during fast acre-grid walking — shipped in v0.2.0. v0.2.0 log
+    re-measure: per-draw slope UNCHANGED at 29.5µs/draw (was 29.3) —
+    uniform re-uploads were not the per-draw bottleneck; the cost is in
+    glBufferData orphan + draw dispatch itself, i.e. P3 territory. P2
+    kept: correct, zero overhead, and it removes work that would
+    otherwise scale with future shader-switch-heavy content): shader switch no longer sets dirty=ALL (was re-uploading every
     uniform group ~each switch, and switches happen constantly at 500+
     draws/frame). Every real state change bumps a per-group generation
     counter (`pc_gx_mark_dirty`, bits 0-11 = uniform groups); each program
@@ -98,10 +103,13 @@ is line-buffered, so future device logs show the crash context.
     hitches (each a mid-frame Mali compile; the worst gl-dominated stutters,
     e.g. gl=344ms at 31 draws, line up with these). Old 43-key seed is a
     strict subset. Deployed to SD same day. Regrow again whenever logs show
-    mid-session compiles.
+    mid-session compiles. v0.2.0 log: 1 compile all session (was 24), max
+    gameplay stutter 124ms (was 545ms) — verified.
 
 11. **Dynamic-fps upward probe** (2026-07-13, P2.5, DEVICE-VERIFIED same
-    day: no more 30-lock after area loads — shipped in v0.2.0):
+    day; v0.2.0 log confirms: every sub-35fps run sits at 487-578 draws
+    with gl 18-19ms = genuine load; zero lock signatures (no low-fps runs
+    in light scenes) — shipped in v0.2.0):
     governor was bistable — low target ⇒ more logic ticks per measured
     batch ⇒ measured work stays high ⇒ low target self-sustains (device:
     outdoor 30 fps until a house visit reset it to 60). When target < 60,
