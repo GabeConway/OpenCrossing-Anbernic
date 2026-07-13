@@ -331,6 +331,7 @@ extern int Actor_draw_actor_no_culling_check2(ACTOR* actor, xyz_t* camera_pos, f
     }
 
     return res;
+#endif
 }
 
 static void Actor_cull_check(ACTOR* actor) {
