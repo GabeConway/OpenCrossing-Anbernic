@@ -1,0 +1,51 @@
+name: Release
+
+# Frugal with Actions minutes (private repo): runs only on version tags
+# or when started by hand.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    # armhf build runs under QEMU user emulation — expect it to be slow.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU (arm emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Build armhf binary (Debian bookworm, linux/arm/v7)
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD":/work \
+            debian:bookworm bash /work/pc/build-armhf-docker.sh
+          test -f pc/build-armhf/bin/AnimalCrossing
+          file pc/build-armhf/bin/AnimalCrossing | grep -q 'ELF 32-bit.*ARM'
+
+      - name: Package PortMaster zip
+        run: |
+          ZIP="animal-crossing-anbernic-${GITHUB_REF_NAME}-armhf.zip"
+          ./portmaster/make-package.sh pc/build-armhf/bin/AnimalCrossing "$PWD/$ZIP"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload artifact (manual runs without a tag)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP }}
+          path: ${{ env.ZIP }}
+
+      - name: Publish GitHub release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$ZIP" --generate-notes

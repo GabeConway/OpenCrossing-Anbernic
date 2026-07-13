@@ -1,19 +1,24 @@
 # PortMaster package — Animal Crossing (ac-gc)
 
-Layout to copy onto the device SD card (muOS/Knulli/Rocknix `ports` roms dir):
+Zip layout (what `make-package.sh` assembles, and what CI releases contain):
 
 ```
+Animal Crossing.sh        <- launcher: copy to ROMS/Ports/ on the SD card
 ports/
-  Animal Crossing.sh      <- launcher (this folder)
   ac-gc/
-    AnimalCrossing        <- armhf binary (from harness/smoke.sh armhf build,
-                             pc/build-armhf/bin/AnimalCrossing in the armhf worktree)
-    shaders/              <- default.vert / default.frag
+    AnimalCrossing        <- armhf binary (pc/build-armhf/bin/AnimalCrossing)
+    shaders/              <- default.vert / default.frag (from pc/shaders/)
     rom/<your dump>.iso   <- user-supplied GAFE01 USA disc image
+    libs.armhf/           <- fallback lib dir (empty; device /usr/lib32 wins)
     conf/                 <- created at first run
 ```
 
-Assemble a zip with: `./make-package.sh` (run after the armhf build exists).
+Assemble a zip with `./make-package.sh` after the armhf build exists
+(optionally: `./make-package.sh <binary> <output.zip>`).
+
+The launcher script here must stay in sync with
+`port_files/Animal Crossing.sh` (the source of truth) — copy it over when
+either changes.
 
 Device notes (RG-34XX SP):
 - 720x480 screen; launcher seeds settings.ini with fullscreen 720x480, msaa=0,

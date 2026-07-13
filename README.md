@@ -11,6 +11,13 @@ must provide your own disc image of the game.
 
 Supported game version: `GAFE01` — Animal Crossing (USA), Rev 0.
 
+> ## ⚠️ Project status
+>
+> This port is **actively developed** and **has not been tested end-to-end
+> yet**. It boots, renders, and saves on real hardware, but expect rough
+> edges — and **save often**. Bug reports are welcome (attach
+> `ports/ac-gc/log.txt`).
+
 ## Why this project exists
 
 The excellent [ac-decomp](https://github.com/ACreTeam/ac-decomp) decompilation made
@@ -43,17 +50,58 @@ forward, focused on making the game genuinely good on handheld hardware.
 
 ## Installing on a muOS device
 
-1. Copy the `ports/ac-gc/` folder (binary, `libs.armhf/`, `shaders/`, `conf/`)
-   onto the SD card, and `Animal Crossing.sh` into `ROMS/Ports/`.
-2. Place your `Animal Crossing.iso` (GAFE01 USA) in `ports/ac-gc/rom/`.
-3. Launch **Animal Crossing** from the Ports menu.
+No build tools needed — everything except the game itself comes in the release
+zip. You need: your Anbernic device running muOS with PortMaster installed, a
+computer with an SD card reader, and **your own legally-dumped copy** of
+Animal Crossing (USA) as an `.iso` file.
 
-The game reads all assets directly from the disc image — no extraction step. Saves,
-settings, key bindings, and logs are written next to the binary in `ports/ac-gc/`.
+1. **Download the release zip.** Go to the
+   [latest release](../../releases/latest) and download
+   `animal-crossing-anbernic-vX.Y.Z-armhf.zip` (under "Assets").
+2. **Unzip it** on your computer. Inside you'll find a folder called `ports`
+   and a file called `Animal Crossing.sh`.
+3. **Plug the device's SD card into your computer.** Power the handheld off,
+   pop out the SD card, and connect it to the computer with a card reader.
+4. **Copy the files onto the card:**
+   - Copy the whole `ports` folder to the **root** of the SD card (the top
+     level, next to folders like `ROMS`). If the computer asks whether to
+     merge or replace an existing `ports` folder, choose **merge**.
+   - Copy `Animal Crossing.sh` into the `ROMS/Ports/` folder on the card.
+5. **Add your game dump.** Copy your own `Animal Crossing.iso` (USA version,
+   game ID `GAFE01`) into `ports/ac-gc/rom/` on the card. This port ships no
+   game data — without your disc image, nothing will start.
+6. **Eject the card safely**, put it back in the device, power on, and launch
+   **Animal Crossing** from the **Ports** menu.
+
+The **first launch takes noticeably longer** — the game is building its shader
+cache for your device's GPU. Later launches are much faster.
+
+The game reads all assets directly from the disc image — no extraction step.
+Saves, settings, key bindings, and logs are written next to the binary in
+`ports/ac-gc/`.
+
+**Troubleshooting**
+
+- **Black screen / instant exit:** check that your iso is in
+  `ports/ac-gc/rom/` and is the USA `GAFE01` version. Any filename ending in
+  `.iso`, `.gcm`, or `.ciso` works.
+- **No audio:** quit and relaunch the game once — the audio stack sometimes
+  needs a second start after first install.
+- **Reporting a bug:** attach `ports/ac-gc/log.txt` from the SD card — it's
+  rewritten on every launch and contains the diagnostics we need.
+
+## Releases & branches
+
+- `main` is the release branch — tagged versions (`vX.Y.Z`) are built into
+  ready-to-install zips by CI and published on the
+  [Releases page](../../releases).
+- `dev` is daily development and may be broken at any time.
 
 ## Building from source (armhf)
 
-Cross-build in Docker from any machine:
+Grabbing a [release zip](../../releases/latest) is the easy path — building
+from source is only needed for development. Cross-build in Docker from any
+machine:
 
 ```bash
 docker run --rm --platform linux/arm/v7 \
@@ -64,7 +112,8 @@ docker run --rm --platform linux/arm/v7 \
 Output: `pc/build-armhf/bin/AnimalCrossing` (32-bit ARM hard-float ELF).
 
 A desktop build (`build_pc.sh`) still works for development and testing; it needs
-SDL2 and a C toolchain.
+SDL2 and a C toolchain. See [BUILDING.md](BUILDING.md) for the full developer
+workflow (desktop builds, smoke tests, release tagging).
 
 ## Settings
 
