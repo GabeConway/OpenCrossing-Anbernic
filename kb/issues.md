@@ -2,21 +2,12 @@
 
 ## Open
 
-- **Dynamic-fps governor bistable — locks at 30 in scenes that could run
-  50-60** (2026-07-13, device report: new outdoor area renders 30 fps; enter
-  house → 60; exit → same outdoor area now 60 and stays there). Root cause
-  (pc_vi.c): `pc_dynamic_fps_update` feeds on `work_us` = whole batch
-  (all frameskip logic-only ticks + render tick). At target 30 the batch is
-  2 logic ticks + 1 render, so measured work stays high → EMA never drops
-  → low target self-sustains, even when a 1-tick/60fps frame would fit.
-  (Swap-wait/vsync rounding inside work_us may contribute too.) Cheap
-  interior breaks the loop; state then holds at 60. NOT a shader issue.
-  **FIX SHIPPED 2026-07-13 (P2.5, awaiting device test): upward probe** —
-  when target < 60, every 120 render frames the EMA is halved so the
-  governor re-tests headroom; real load re-converges within ~4 frames.
-  Kill switch PC_NO_FPS_PROBE=1. If probe wobble is visible in true-30
-  scenes, alternatives: normalize work by ticks-in-batch, or estimate
-  single-tick cost (logic vs render split) and target from that.
+- **FPS dips to ~30 walking fast across acre grids** (2026-07-13 device
+  test of v0.2.0): overall range is 60↔30 depending on scene; steady areas
+  hold 55-60, acre-streaming walks dip to ~30 worst case. Long-term goal:
+  60 stable / most of the time (kb/perf.md "Current state"). Next levers:
+  P3 VBO orphan decision after re-measure, per-TU -O2 on loader/
+  decompression TUs, iso read-ahead (the zero-draw stall class).
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
@@ -38,11 +29,10 @@
   lows, ~30 fps avg walking while acres load. log.txt PERF numbers (draws,
   gl ms vs 491-600/15-26ms baseline) still worth grabbing next SD mount.
   Triage switch PC_NO_STATE_DEDUP=1.
-  **P2 — per-program uniform value shadowing: IMPLEMENTED 2026-07-13**
-  (kb/perf.md #10), awaiting device test. Generation counters per uniform
-  group + per-program uploaded-gen records; shader switch no longer forces
-  dirty=ALL. Kill switch PC_NO_UNIFORM_SHADOW=1. Then re-measure before
-  deciding on (P3) per-draw glBufferData orphan → one big VBO with offset
+  **P2 — per-program uniform value shadowing: SHIPPED + DEVICE-VERIFIED
+  2026-07-13** (kb/perf.md #10, v0.2.0). Kill switch PC_NO_UNIFORM_SHADOW=1.
+  Re-measure (fresh log.txt PERF numbers on the P2 build) before deciding
+  on (P3) per-draw glBufferData orphan → one big VBO with offset
   accumulation per frame (fewer/larger draws after P1 may deflate this).
 - **One-time 8.7s stall on home menu** (device log frame 606: work=8746ms,
   gl=13ms, tex=0): pure game-side stall — synchronous iso reads
@@ -64,3 +54,6 @@
 - No audio → 32-bit PipeWire env in launcher (kb/device.md).
 - Game running at 57% speed under load → fps_target must be dynamic (6);
   fixed targets tie game logic to render rate.
+- Outdoor area locked at 30 fps until a house visit reset it → dynamic-fps
+  governor was bistable (batch measurement); fixed with upward probe,
+  kb/perf.md #11. If it recurs, check PC_NO_FPS_PROBE handling first.

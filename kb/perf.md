@@ -1,5 +1,12 @@
 # Performance knowledge & playbook
 
+## Current state (2026-07-13, v0.2.0)
+
+FPS ranges between 60 and 30 depending on what's going on — steady areas
+hold 55-60, heavy moments (walking fast across acre grids while they
+stream in) can dip to ~30 worst case. Long-term goal: 60 fps stable, or
+at least most of the time. Game speed holds ~100% throughout (dynamic fps).
+
 ## Fixed so far (chronological, 2026-07-13)
 
 1. ~150 glGetUniformLocation per shader switch → per-program `PCGXUniformLocs`
@@ -65,8 +72,9 @@ is line-buffered, so future device logs show the crash context.
    avg 52.4 fps with 63% of samples ≥55 fps, avg speed 99%, 0 crashes,
    0 audio underruns. P1 roughly halved draw count and gl time.
 
-10. **Per-program uniform value shadowing** (2026-07-13, P2, awaiting device
-    test): shader switch no longer sets dirty=ALL (was re-uploading every
+10. **Per-program uniform value shadowing** (2026-07-13, P2,
+    DEVICE-VERIFIED same day: "slightly better", worst case now ~30 fps
+    during fast acre-grid walking — shipped in v0.2.0): shader switch no longer sets dirty=ALL (was re-uploading every
     uniform group ~each switch, and switches happen constantly at 500+
     draws/frame). Every real state change bumps a per-group generation
     counter (`pc_gx_mark_dirty`, bits 0-11 = uniform groups); each program
@@ -92,7 +100,8 @@ is line-buffered, so future device logs show the crash context.
     strict subset. Deployed to SD same day. Regrow again whenever logs show
     mid-session compiles.
 
-11. **Dynamic-fps upward probe** (2026-07-13, P2.5, awaiting device test):
+11. **Dynamic-fps upward probe** (2026-07-13, P2.5, DEVICE-VERIFIED same
+    day: no more 30-lock after area loads — shipped in v0.2.0):
     governor was bistable — low target ⇒ more logic ticks per measured
     batch ⇒ measured work stays high ⇒ low target self-sustains (device:
     outdoor 30 fps until a house visit reset it to 60). When target < 60,
