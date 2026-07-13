@@ -124,7 +124,7 @@ static int s_active_tab = 0;
 
 /* Which tab each menu item belongs to (indexed by MI_*) */
 static const int menu_item_tab[MI_COUNT] = {
-    [MI_FPS_COUNTER]     = TAB_DEBUG,
+    [MI_FPS_COUNTER]     = TAB_VIDEO,
     [MI_MASTER_VOLUME]   = TAB_AUDIO,
     [MI_BGM_VOLUME]      = TAB_AUDIO,
     [MI_SFX_VOLUME]      = TAB_AUDIO,

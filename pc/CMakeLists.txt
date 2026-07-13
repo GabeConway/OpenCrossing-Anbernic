@@ -18,8 +18,11 @@ set(CMAKE_CXX_STANDARD 17)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
-set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
-set(CMAKE_CXX_FLAGS_RELEASE " -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+# NOTE: these overrides previously carried no -O level at all, so everything
+# not covered by a per-source COMPILE_OPTIONS -O2 (i.e. all decomp game code)
+# built unoptimized. -O2 here is a large speedup on the handheld targets.
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
 
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)
@@ -514,6 +517,12 @@ set_source_files_properties(${PC_C_SOURCES}
 )
 set_source_files_properties(${PC_CXX_SOURCES}
     PROPERTIES COMPILE_OPTIONS "-O2;-Wall;-Wextra;${PC_WARN_SUPPRESS};-fpermissive"
+)
+
+# Texture decoders are the hottest CPU path on new-area loads: -O3 for
+# aggressive unrolling/vectorization on top of the global tuning flags.
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx_texture.c
+    PROPERTIES COMPILE_OPTIONS "-O3;-std=gnu11;-Wall;-Wextra;${PC_WARN_SUPPRESS}"
 )
 
 # =============================================================================

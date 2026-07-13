@@ -424,6 +424,37 @@ void pc_gx_blit_to_screen(void) {
 
 /* --- Vertex Submission --- */
 void GXBegin(u32 primitive, u32 vtxfmt, u16 nverts) {
+    /* Batch merge: every GX state setter flushes the open batch immediately,
+     * so arriving here with a complete batch still open means no state changed
+     * since it was built — the two draws share identical GL state and can be
+     * concatenated into one draw call. Only list primitives merge safely
+     * (strips/fans would bridge geometry across batches). Mali per-draw
+     * driver overhead is significant; typical scenes merge many calls. */
+    if (g_gx.in_begin && g_gx.dirty == 0 &&
+        (g_gx.current_primitive == GX_QUADS || g_gx.current_primitive == GX_TRIANGLES) &&
+        primitive == (u32)g_gx.current_primitive &&
+        vtxfmt == (u32)g_gx.current_vtxfmt &&
+        g_gx.expected_vertex_count > 0) {
+        int submitted = g_gx.current_vertex_idx + (g_gx.vertex_pending ? 1 : 0);
+        if (submitted == g_gx.expected_vertex_count &&
+            submitted + (int)nverts <= PC_GX_MAX_VERTS) {
+            /* Commit the previous batch's pending vertex, extend the batch */
+            if (g_gx.vertex_pending && g_gx.current_vertex_idx < PC_GX_MAX_VERTS) {
+                g_gx.vertex_buffer[g_gx.current_vertex_idx] = g_gx.current_vertex;
+                g_gx.current_vertex_idx++;
+                g_gx.vertex_pending = 0;
+            }
+            g_gx.expected_vertex_count += nverts;
+            /* Reset the working vertex exactly like a fresh GXBegin */
+            memset(&g_gx.current_vertex, 0, sizeof(PCGXVertex));
+            g_gx.current_vertex.color0[0] = 255;
+            g_gx.current_vertex.color0[1] = 255;
+            g_gx.current_vertex.color0[2] = 255;
+            g_gx.current_vertex.color0[3] = 255;
+            return;
+        }
+    }
+
     /* Auto-flush previous batch if GXEnd was omitted (normal on real HW) */
     pc_gx_commit_pending_and_flush();
 

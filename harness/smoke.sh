@@ -12,7 +12,7 @@ mkdir -p "$OUT"
 
 case "$ARCH" in
   arm64) PLATFORM=linux/arm64;   BUILDDIR=build-linux-arm64-gles; SRC="$REPO" ;;
-  armhf) PLATFORM=linux/arm/v7;  BUILDDIR=build-armhf;            SRC="${REPO}-armhf" ;;
+  armhf) PLATFORM=linux/arm/v7;  BUILDDIR=build-armhf;            SRC="$REPO" ;;
   *) echo "usage: $0 [arm64|armhf]"; exit 2 ;;
 esac
 

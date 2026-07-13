@@ -296,6 +296,30 @@ static inline u16 read_be16(const u8* p) {
     return (u16)((p[0] << 8) | p[1]);
 }
 
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#include <arm_neon.h>
+/* Exact lookup tables matching the scalar truncating expansions.
+ * Note: bit replication (v<<3)|(v>>2) does NOT match v*255/31 for all v
+ * (e.g. v=4: 33 vs 32), so tables keep NEON output byte-identical. */
+static const u8 s_exp5_tbl[32] = { /* v*255/31 */
+    0, 8, 16, 24, 32, 41, 49, 57, 65, 74, 82, 90, 98, 106, 115, 123,
+    131, 139, 148, 156, 164, 172, 180, 189, 197, 205, 213, 222, 230, 238, 246, 255
+};
+static const u8 s_exp3_tbl[8] = { /* v*255/7 */
+    0, 36, 72, 109, 145, 182, 218, 255
+};
+
+/* g*255/63 == 4g + floor(g/21) exactly; floor(g/21) via three compares
+ * (vcge yields all-ones == -1, so subtracting adds 1). */
+static inline uint8x8_t neon_expand6(uint16x8_t g6) {
+    uint16x8_t g8 = vshlq_n_u16(g6, 2);
+    g8 = vsubq_u16(g8, vcgeq_u16(g6, vdupq_n_u16(21)));
+    g8 = vsubq_u16(g8, vcgeq_u16(g6, vdupq_n_u16(42)));
+    g8 = vsubq_u16(g8, vcgeq_u16(g6, vdupq_n_u16(63)));
+    return vmovn_u16(g8);
+}
+#endif
+
 /* I4: 8x8 blocks, 4bpp, each byte = 2 pixels */
 static void decode_I4(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 7) / 8, bh = (h + 7) / 8;
@@ -327,6 +351,35 @@ static void decode_I4(const u8* src, u8* dst, int w, int h) {
 /* I8: 8x4 blocks, 8bpp */
 static void decode_I8(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 7) / 8, bh = (h + 3) / 4;
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    for (int by = 0; by < bh; by++) {
+        for (int bx = 0; bx < bw; bx++) {
+            if ((bx + 1) * 8 <= w && (by + 1) * 4 <= h) {
+                /* fully-interior block: 8 pixels per row, RGBA = IIII */
+                for (int y = 0; y < 4; y++) {
+                    uint8x8_t v = vld1_u8(src); src += 8;
+                    uint8x8x4_t pix;
+                    pix.val[0] = v; pix.val[1] = v; pix.val[2] = v; pix.val[3] = v;
+                    vst4_u8(&dst[((by * 4 + y) * w + bx * 8) * 4], pix);
+                }
+            } else {
+                /* edge block: scalar with bounds checks */
+                for (int y = 0; y < 4; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        u8 val = *src++;
+                        int px = bx * 8 + x, py = by * 4 + y;
+                        if (px < w && py < h) {
+                            int idx = (py * w + px) * 4;
+                            dst[idx] = dst[idx+1] = dst[idx+2] = val;
+                            dst[idx+3] = val;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return;
+#endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
             for (int y = 0; y < 4; y++) {
@@ -368,6 +421,39 @@ static void decode_IA4(const u8* src, u8* dst, int w, int h) {
 /* IA8: 4x4 blocks, 16bpp, alpha byte + intensity byte per pixel */
 static void decode_IA8(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 3) / 4, bh = (h + 3) / 4;
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    for (int by = 0; by < bh; by++) {
+        for (int bx = 0; bx < bw; bx++) {
+            if ((bx + 1) * 4 <= w && (by + 1) * 4 <= h) {
+                /* fully-interior block: 8 pixels (2 rows) per iteration */
+                for (int y = 0; y < 4; y += 2) {
+                    uint8x8x2_t ai = vld2_u8(src); src += 16; /* val[0]=A, val[1]=I */
+                    uint8x8x4_t pix;
+                    pix.val[0] = ai.val[1]; pix.val[1] = ai.val[1];
+                    pix.val[2] = ai.val[1]; pix.val[3] = ai.val[0];
+                    u8 tmp[32];
+                    vst4_u8(tmp, pix);
+                    vst1q_u8(&dst[((by * 4 + y) * w + bx * 4) * 4], vld1q_u8(tmp));
+                    vst1q_u8(&dst[((by * 4 + y + 1) * w + bx * 4) * 4], vld1q_u8(tmp + 16));
+                }
+            } else {
+                /* edge block: scalar with bounds checks */
+                for (int y = 0; y < 4; y++) {
+                    for (int x = 0; x < 4; x++) {
+                        u8 a = *src++;
+                        u8 i = *src++;
+                        int px = bx * 4 + x, py = by * 4 + y;
+                        if (px < w && py < h) {
+                            int idx = (py * w + px) * 4;
+                            dst[idx] = dst[idx+1] = dst[idx+2] = i; dst[idx+3] = a;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return;
+#endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
             for (int y = 0; y < 4; y++) {
@@ -388,6 +474,51 @@ static void decode_IA8(const u8* src, u8* dst, int w, int h) {
 /* RGB565: 4x4 blocks, 16bpp */
 static void decode_RGB565(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 3) / 4, bh = (h + 3) / 4;
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    {
+        uint8x8x4_t t5;
+        t5.val[0] = vld1_u8(&s_exp5_tbl[0]);
+        t5.val[1] = vld1_u8(&s_exp5_tbl[8]);
+        t5.val[2] = vld1_u8(&s_exp5_tbl[16]);
+        t5.val[3] = vld1_u8(&s_exp5_tbl[24]);
+        for (int by = 0; by < bh; by++) {
+            for (int bx = 0; bx < bw; bx++) {
+                if ((bx + 1) * 4 <= w && (by + 1) * 4 <= h) {
+                    /* fully-interior block: 8 pixels (2 rows) per iteration */
+                    for (int y = 0; y < 4; y += 2) {
+                        uint16x8_t v = vreinterpretq_u16_u8(vrev16q_u8(vld1q_u8(src)));
+                        src += 16;
+                        uint8x8x4_t pix;
+                        pix.val[0] = vtbl4_u8(t5, vmovn_u16(vshrq_n_u16(v, 11)));
+                        pix.val[1] = neon_expand6(vandq_u16(vshrq_n_u16(v, 5), vdupq_n_u16(0x3F)));
+                        pix.val[2] = vtbl4_u8(t5, vmovn_u16(vandq_u16(v, vdupq_n_u16(0x1F))));
+                        pix.val[3] = vdup_n_u8(255);
+                        u8 tmp[32];
+                        vst4_u8(tmp, pix);
+                        vst1q_u8(&dst[((by * 4 + y) * w + bx * 4) * 4], vld1q_u8(tmp));
+                        vst1q_u8(&dst[((by * 4 + y + 1) * w + bx * 4) * 4], vld1q_u8(tmp + 16));
+                    }
+                } else {
+                    /* edge block: scalar with bounds checks */
+                    for (int y = 0; y < 4; y++) {
+                        for (int x = 0; x < 4; x++) {
+                            u16 val = (src[0] << 8) | src[1]; src += 2;
+                            int px = bx * 4 + x, py = by * 4 + y;
+                            if (px < w && py < h) {
+                                u8 r = ((val >> 11) & 0x1F) * 255 / 31;
+                                u8 g = ((val >> 5) & 0x3F) * 255 / 63;
+                                u8 b = (val & 0x1F) * 255 / 31;
+                                int idx = (py * w + px) * 4;
+                                dst[idx] = r; dst[idx+1] = g; dst[idx+2] = b; dst[idx+3] = 255;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
+#endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
             for (int y = 0; y < 4; y++) {
@@ -410,6 +541,63 @@ static void decode_RGB565(const u8* src, u8* dst, int w, int h) {
 /* RGB5A3: 4x4 blocks, 16bpp. Bit 15=1: RGB555 opaque, bit 15=0: ARGB3444 */
 static void decode_RGB5A3(const u8* src, u8* dst, int w, int h) {
     int bw = (w + 3) / 4, bh = (h + 3) / 4;
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    {
+        uint8x8x4_t t5;
+        t5.val[0] = vld1_u8(&s_exp5_tbl[0]);
+        t5.val[1] = vld1_u8(&s_exp5_tbl[8]);
+        t5.val[2] = vld1_u8(&s_exp5_tbl[16]);
+        t5.val[3] = vld1_u8(&s_exp5_tbl[24]);
+        uint8x8_t t3 = vld1_u8(s_exp3_tbl);
+        for (int by = 0; by < bh; by++) {
+            for (int bx = 0; bx < bw; bx++) {
+                if ((bx + 1) * 4 <= w && (by + 1) * 4 <= h) {
+                    /* fully-interior block: 8 pixels (2 rows) per iteration */
+                    for (int y = 0; y < 4; y += 2) {
+                        uint16x8_t v = vreinterpretq_u16_u8(vrev16q_u8(vld1q_u8(src)));
+                        src += 16;
+                        /* RGB555 opaque decode for all pixels */
+                        uint8x8_t ro = vtbl4_u8(t5, vmovn_u16(vandq_u16(vshrq_n_u16(v, 10), vdupq_n_u16(0x1F))));
+                        uint8x8_t go = vtbl4_u8(t5, vmovn_u16(vandq_u16(vshrq_n_u16(v, 5), vdupq_n_u16(0x1F))));
+                        uint8x8_t bo = vtbl4_u8(t5, vmovn_u16(vandq_u16(v, vdupq_n_u16(0x1F))));
+                        /* ARGB3444 decode for all pixels (4-bit: n*17 = (n<<4)|n) */
+                        uint16x8_t r4 = vandq_u16(vshrq_n_u16(v, 8), vdupq_n_u16(0x0F));
+                        uint16x8_t g4 = vandq_u16(vshrq_n_u16(v, 4), vdupq_n_u16(0x0F));
+                        uint16x8_t b4 = vandq_u16(v, vdupq_n_u16(0x0F));
+                        uint8x8_t rt = vmovn_u16(vorrq_u16(vshlq_n_u16(r4, 4), r4));
+                        uint8x8_t gt = vmovn_u16(vorrq_u16(vshlq_n_u16(g4, 4), g4));
+                        uint8x8_t bt = vmovn_u16(vorrq_u16(vshlq_n_u16(b4, 4), b4));
+                        uint8x8_t at = vtbl1_u8(t3, vmovn_u16(vandq_u16(vshrq_n_u16(v, 12), vdupq_n_u16(0x07))));
+                        /* bit 15 selects mode per pixel */
+                        uint8x8_t m = vmovn_u16(vtstq_u16(v, vdupq_n_u16(0x8000)));
+                        uint8x8x4_t pix;
+                        pix.val[0] = vbsl_u8(m, ro, rt);
+                        pix.val[1] = vbsl_u8(m, go, gt);
+                        pix.val[2] = vbsl_u8(m, bo, bt);
+                        pix.val[3] = vbsl_u8(m, vdup_n_u8(255), at);
+                        u8 tmp[32];
+                        vst4_u8(tmp, pix);
+                        vst1q_u8(&dst[((by * 4 + y) * w + bx * 4) * 4], vld1q_u8(tmp));
+                        vst1q_u8(&dst[((by * 4 + y + 1) * w + bx * 4) * 4], vld1q_u8(tmp + 16));
+                    }
+                } else {
+                    /* edge block: scalar with bounds checks */
+                    for (int y = 0; y < 4; y++) {
+                        for (int x = 0; x < 4; x++) {
+                            u16 val = (src[0] << 8) | src[1]; src += 2;
+                            int px = bx * 4 + x, py = by * 4 + y;
+                            if (px < w && py < h) {
+                                int idx = (py * w + px) * 4;
+                                decode_rgb5a3_entry(val, &dst[idx], &dst[idx+1], &dst[idx+2], &dst[idx+3]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
+#endif
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
             for (int y = 0; y < 4; y++) {
@@ -486,6 +674,9 @@ static void decode_CMPR(const u8* src, u8* dst, int w, int h) {
                     palette[3][0] = palette[3][1] = palette[3][2] = 0;
                     palette[3][3] = 0;
                 }
+                /* u32 palette copy for single-store pixel writes (RGBA memory order) */
+                u32 pal32[4];
+                memcpy(pal32, palette, sizeof(pal32));
                 for (int y = 0; y < 4; y++) {
                     u8 row = *src++;
                     for (int x = 0; x < 4; x++) {
@@ -493,10 +684,7 @@ static void decode_CMPR(const u8* src, u8* dst, int w, int h) {
                         int px = bx * 8 + sx + x, py = by * 8 + sy + y;
                         if (px < w && py < h) {
                             int idx = (py * w + px) * 4;
-                            dst[idx] = palette[ci][0];
-                            dst[idx+1] = palette[ci][1];
-                            dst[idx+2] = palette[ci][2];
-                            dst[idx+3] = palette[ci][3];
+                            *(u32*)&dst[idx] = pal32[ci];
                         }
                     }
                 }
@@ -599,16 +787,32 @@ static void decode_CI4(const u8* src, u8* dst, int w, int h, const u8 palette[25
 /* CI8: 8x4 blocks, 8bpp indexed */
 static void decode_CI8(const u8* src, u8* dst, int w, int h, const u8 palette[256][4]) {
     int bw = (w + 7) / 8, bh = (h + 3) / 4;
+    /* u32 palette copy: one store per pixel instead of four byte writes
+     * (RGBA memory order is preserved by the byte copy) */
+    u32 pal32[256];
+    memcpy(pal32, palette, sizeof(pal32));
     for (int by = 0; by < bh; by++) {
         for (int bx = 0; bx < bw; bx++) {
-            for (int y = 0; y < 4; y++) {
-                for (int x = 0; x < 8; x++) {
-                    u8 val = *src++;
-                    int px = bx * 8 + x, py = by * 4 + y;
-                    if (px < w && py < h) {
-                        int idx = (py * w + px) * 4;
-                        dst[idx] = palette[val][0]; dst[idx+1] = palette[val][1];
-                        dst[idx+2] = palette[val][2]; dst[idx+3] = palette[val][3];
+            if ((bx + 1) * 8 <= w && (by + 1) * 4 <= h) {
+                /* fully-interior block: unrolled row, no bounds checks */
+                for (int y = 0; y < 4; y++) {
+                    u32* d = (u32*)&dst[((by * 4 + y) * w + bx * 8) * 4];
+                    d[0] = pal32[src[0]]; d[1] = pal32[src[1]];
+                    d[2] = pal32[src[2]]; d[3] = pal32[src[3]];
+                    d[4] = pal32[src[4]]; d[5] = pal32[src[5]];
+                    d[6] = pal32[src[6]]; d[7] = pal32[src[7]];
+                    src += 8;
+                }
+            } else {
+                /* edge block: scalar with bounds checks */
+                for (int y = 0; y < 4; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        u8 val = *src++;
+                        int px = bx * 8 + x, py = by * 4 + y;
+                        if (px < w && py < h) {
+                            int idx = (py * w + px) * 4;
+                            *(u32*)&dst[idx] = pal32[val];
+                        }
                     }
                 }
             }
@@ -636,6 +840,13 @@ static void decode_gc_texture(const void* src, u8* dst_rgba, int w, int h, u32 f
             break;
     }
 }
+
+/* Per-frame CPU decode budget: entering a new area misses dozens of textures
+ * in one frame; cap decodes per frame and let the rest pop in next frame. */
+extern u32 pc_frame_counter; /* pc_vi.c */
+static u32 s_decode_frame = 0;
+static int s_decode_count = 0;
+#define DECODE_BUDGET_PER_FRAME 8
 
 void GXLoadTexObj(void* obj, u32 id) {
     pc_gx_flush_if_begin_complete();
@@ -769,6 +980,39 @@ void GXLoadTexObj(void* obj, u32 id) {
             DIRTY(PC_GX_DIRTY_TEXTURES);
             return;
         }
+    }
+
+    /* per-frame decode budget (tiny textures exempt: cheap and often UI) */
+    if (image_ptr && width > 0 && height > 0 && width <= 1024 && height <= 1024 &&
+        width * height > 32 * 32) {
+        if (pc_frame_counter != s_decode_frame) {
+            s_decode_frame = pc_frame_counter;
+            s_decode_count = 0;
+        }
+        if (s_decode_count >= DECODE_BUDGET_PER_FRAME) {
+            /* over budget: bind shared 1x1 white placeholder, skip cache
+             * insert so this texture misses again and decodes next frame */
+            static GLuint s_placeholder_tex = 0;
+            if (!s_placeholder_tex) {
+                u8 white[4] = {255, 255, 255, 255};
+                glGenTextures(1, &s_placeholder_tex);
+                glBindTexture(GL_TEXTURE_2D, s_placeholder_tex);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0,
+                             GL_RGBA, GL_UNSIGNED_BYTE, white);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            } else {
+                glBindTexture(GL_TEXTURE_2D, s_placeholder_tex);
+            }
+            o[TEXOBJ_GL_TEX] = s_placeholder_tex;
+            g_gx.gl_textures[id] = s_placeholder_tex;
+            g_gx.tex_obj_w[id] = width;
+            g_gx.tex_obj_h[id] = height;
+            g_gx.tex_obj_fmt[id] = (int)format;
+            DIRTY(PC_GX_DIRTY_TEXTURES);
+            return;
+        }
+        s_decode_count++;
     }
 
     GLuint tex;

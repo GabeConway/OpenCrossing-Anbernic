@@ -8,9 +8,13 @@ apt-get install -y --no-install-recommends \
   xvfb libgl1-mesa-dri libegl1 ca-certificates 2>&1 | tail -3
 mkdir -p /work/pc/build-armhf
 cd /work/pc/build-armhf || exit 1
+# Target tuning: Allwinner H700 = Cortex-A53 (armv7 userland) with NEON.
+# Debian armhf gcc defaults to vfpv3-d16; NEON must be enabled explicitly for
+# the vectorized texture decoders and general auto-vectorization.
+TUNE="-fsigned-char -mcpu=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard"
 cmake .. -DPC_USE_GLES=ON \
-  -DCMAKE_C_FLAGS=-fsigned-char \
-  -DCMAKE_CXX_FLAGS=-fsigned-char 2>&1 | tail -20 || exit 1
+  -DCMAKE_C_FLAGS="$TUNE" \
+  -DCMAKE_CXX_FLAGS="$TUNE" 2>&1 | tail -20 || exit 1
 make -j4 2>&1 | tee /work/pc/build-armhf/make.log | grep -E "^\[|Error|error:|warning: .*\[-W(error|fatal)|Built target" | tail -40
 MAKE_RC=${PIPESTATUS[0]}
 echo "=== MAKE EXIT: $MAKE_RC ==="
