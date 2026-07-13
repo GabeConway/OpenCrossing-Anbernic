@@ -199,6 +199,10 @@ void pc_gx_texture_cache_invalidate(void) {
     }
     tex_cache_count = 0;
     memset(tex_index, 0, sizeof(tex_index));
+    /* GL texture ids are freed and may be re-issued; stale ids here would
+     * let the GXLoadTexObj no-op check skip a required rebind. */
+    memset(g_gx.gl_textures, 0, sizeof(g_gx.gl_textures));
+    DIRTY(PC_GX_DIRTY_TEXTURES);
 }
 
 void pc_gx_texture_init(void) {
@@ -864,8 +868,11 @@ static int s_decode_count = 0;
 #define DECODE_BUDGET_PER_FRAME 8
 
 void GXLoadTexObj(void* obj, u32 id) {
-    pc_gx_flush_if_begin_complete();
-
+    /* No flush up front: everything until the first GL call is pure CPU
+     * (key extraction, hashing, cache lookup). Re-loading the texture the
+     * map already holds is then a full no-op — no flush, no dirty — which
+     * keeps the open draw batch mergeable across GXLoadTexObj spam. Each
+     * path that DOES touch GL/state flushes before its first GL call. */
     if (id >= 8 && id != 0xFF && id < 0x100) return;
     if (id >= 8) return;
 
@@ -896,6 +903,7 @@ void GXLoadTexObj(void* obj, u32 id) {
     {
         GLuint efb_tex = pc_gx_efb_capture_find(o[TEXOBJ_IMAGE_PTR]);
         if (efb_tex) {
+            pc_gx_flush_if_begin_complete();
             glBindTexture(GL_TEXTURE_2D, efb_tex);
             GLenum gl_filter = filter_mode ? GL_LINEAR : GL_NEAREST;
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter);
@@ -919,6 +927,19 @@ void GXLoadTexObj(void* obj, u32 id) {
                                            tlut_ptr_key, tlut_hash_key, hash);
     if (cached) {
         tex_cache_hits++;
+        /* No-op rebind: this map already holds the same GL texture with the
+         * same sampler state — skip flush/GL/dirty so the batch survives.
+         * PC_NO_STATE_DEDUP=1 disables. */
+        if (pc_gx_state_dedup &&
+            cached->gl_tex == g_gx.gl_textures[id] &&
+            cached->wrap_s == wrap_s && cached->wrap_t == wrap_t &&
+            cached->min_filter == filter_mode &&
+            g_gx.tex_obj_w[id] == width && g_gx.tex_obj_h[id] == height &&
+            g_gx.tex_obj_fmt[id] == (int)format) {
+            o[TEXOBJ_GL_TEX] = cached->gl_tex;
+            return;
+        }
+        pc_gx_flush_if_begin_complete();
         GLuint tex = cached->gl_tex;
         glBindTexture(GL_TEXTURE_2D, tex);
 
@@ -951,6 +972,7 @@ void GXLoadTexObj(void* obj, u32 id) {
 
     /* cache miss */
     tex_cache_misses++;
+    pc_gx_flush_if_begin_complete();
 
     /* try texture pack replacement before decoding */
     if (pc_texture_pack_active()) {

@@ -255,6 +255,10 @@ typedef struct {
 
 extern PCGXState g_gx;
 
+/* Redundant GX state sets (same value re-set) skip the batch flush + dirty
+ * marking so GXBegin merging can span them. PC_NO_STATE_DEDUP=1 disables. */
+extern int pc_gx_state_dedup;
+
 typedef struct PCGXShaderCacheEntry {
     uint64_t key;
     GLuint program;

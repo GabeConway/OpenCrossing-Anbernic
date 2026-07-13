@@ -27,6 +27,14 @@ calls the GameCube GX API; these files implement it on GL/GLES.
   previous batch when it completed with `dirty == 0` (nothing ran in between),
   same primitive (QUADS/TRIANGLES only) and same vtxfmt. Strips/fans never
   merge (would bridge geometry). See GXBegin in pc_gx.c.
+- **State-set dedup (2026-07-13)**: setters early-return on no-op re-sets
+  (compare before flush/DIRTY) so merging spans them — `pc_gx_state_dedup`,
+  env PC_NO_STATE_DEDUP=1 disables. Rules when touching setters: any setter
+  that makes a GL call (viewport/scissor/GXLoadTexObj) must flush BEFORE its
+  first GL call and may only skip when the GL-side state is provably
+  identical (viewport/scissor shadow computed GL values, invalidated in
+  begin_frame/restore_after_nes; GXLoadTexObj compares g_gx.gl_textures[map]
+  + sampler state). Pure-state setters just compare their g_gx fields.
 - Quads draw via a static quad→triangle index buffer (GL_ELEMENT_ARRAY);
   everything else via glDrawArrays. One VAO/VBO bound forever; per-flush
   glBufferData orphan+upload.

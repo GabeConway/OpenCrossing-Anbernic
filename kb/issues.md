@@ -16,13 +16,20 @@
   (~40-50µs/draw), tex=0.0 (texture pipeline fully solved), speed 94-100%
   (dynamic fps working). emu64 -O2 experiment SHIPPED SAFE (train passes,
   crashes=0) and improved home area 36→35-40 fps. PERF-tab toggles don't
-  matter because draw dispatch, not scene volume, is the cost. Leads, in
-  order: (1) per-draw glBufferData orphan → one big VBO with offset
-  accumulation per frame; (2) uniform re-upload on shader switch
-  (dirty=ALL) → per-program uniform value shadowing so unchanged values
-  skip upload; (3) why do 500+ draws survive merging — likely
-  GXLoadTexObj-driven flushes; consider binding-change-only fast path that
-  doesn't break the batch when the texture object is identical.
+  matter because draw dispatch, not scene volume, is the cost.
+  **P1 GX state-set dedup: SHIPPED + DEVICE-VERIFIED 2026-07-13** (kb/perf.md
+  #9) — playtest: much better loading, acres load right, smoother, better 1%
+  lows, ~30 fps avg walking while acres load. log.txt PERF numbers (draws,
+  gl ms vs 491-600/15-26ms baseline) still worth grabbing next SD mount.
+  Triage switch PC_NO_STATE_DEDUP=1.
+  **NEXT: P2 — per-program uniform value shadowing** (user-approved
+  2026-07-13): shader switch sets dirty=ALL → all uniform groups re-upload
+  (pc_gx.c pc_gx_flush_vertices upload block) even when values unchanged for
+  that program. Shadow last-uploaded values (or per-group generation
+  counters) per program, skip unchanged groups. Kill switch env var per house
+  pattern. Then re-measure before deciding on
+  (P3) per-draw glBufferData orphan → one big VBO with offset accumulation
+  per frame (fewer/larger draws after P1 may deflate this).
 - **One-time 8.7s stall on home menu** (device log frame 606: work=8746ms,
   gl=13ms, tex=0): pure game-side stall — synchronous iso reads
   (pc_disc/pc_dvd fread on SD) and/or decompression in unoptimized decomp

@@ -46,8 +46,24 @@ testing a full new-game intro (KK Slider → train → town arrival).
 SIGBUS is now caught by the crash-recovery handler (pc_main.c) and stdout
 is line-buffered, so future device logs show the crash context.
 
+9. **GX state-set dedup** (2026-07-13, DEVICE-VERIFIED same day: smoother,
+   better 1% lows, acre loads clean, ~30 fps avg walking during acre loads;
+   no visual regressions reported): decomp re-sets
+   identical GX state constantly; every set flushed the open batch, which is
+   why 500+ draws survived merging. All hot setters (TEV, blend/depth/cull,
+   lighting, texgen, matrices, viewport/scissor, GXLoadTexObj) now compare
+   against current state and early-return on no-ops — no flush, no dirty, so
+   GXBegin merging spans them. Viewport/scissor shadow the *computed GL*
+   values (invalidated in pc_gx_begin_frame + restore_after_nes since
+   overlay/begin_frame touch GL viewport directly). GXLoadTexObj does the
+   pure-CPU cache lookup before any flush and no-ops when the map already
+   holds the same GL texture + sampler state; texture-cache invalidate clears
+   g_gx.gl_textures so freed/reissued GL ids can't fool the check.
+   Kill switch: PC_NO_STATE_DEDUP=1.
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)
 - PC_NO_DRAW_MERGE=1 — disable GXBegin draw-call merging
 - PC_NO_NEON_DECODE=1 — scalar texture decoders
 - PC_NO_DECODE_BUDGET=1 — decode every texture the frame it's requested
