@@ -5534,7 +5534,7 @@ void emu64::dl_G_MOVEWORD() {
 
             this->num_unknown_cmds++;
             this->Printf0("未知の命令に出くわした [MOVEWORD index=0x%02X offset=0x%02X data=0x%08X]\n",
-                          moveword->index, moveword->offset, mw_data);
+                          moveword->index, moveword->offset, moveword->data);
         } break;
     }
 }
