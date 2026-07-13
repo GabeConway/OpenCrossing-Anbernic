@@ -236,6 +236,28 @@ static void pc_gx_dirty_all(void) {
         g_gx.group_gen[b]++;
 }
 
+/* Streaming VBO: instead of orphaning + re-uploading the whole VBO with
+ * glBufferData on every flush (device log: ~29.5µs/draw, ~16ms of gl time
+ * at 550 draws/frame), append each batch at a running offset in one large
+ * buffer with glBufferSubData and rebase the attrib pointers to the batch
+ * start. The buffer is orphaned only on wrap, so the driver never has to
+ * allocate or synchronize per draw. PC_NO_STREAM_VBO=1 falls back to the
+ * per-flush orphan path. */
+#define PC_GX_STREAM_VERTS (128 * 1024)  /* 128k verts * 48B = 6MB */
+static int        s_stream_vbo = 1;
+static GLsizeiptr s_stream_offset = 0;    /* in vertices */
+static GLsizeiptr s_attrib_base = -1;     /* attrib pointers' current base */
+
+static void pc_gx_set_attrib_base(GLsizeiptr first_vertex) {
+    size_t stride = sizeof(PCGXVertex);
+    size_t base = (size_t)first_vertex * stride;
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)(base + offsetof(PCGXVertex, position)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(base + offsetof(PCGXVertex, normal)));
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)(base + offsetof(PCGXVertex, color0)));
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)(base + offsetof(PCGXVertex, texcoord)));
+    s_attrib_base = first_vertex;
+}
+
 int pc_emu64_frame_cmds = 0;
 int pc_emu64_frame_crashes = 0;
 int pc_emu64_frame_noop_cmds = 0;
@@ -249,6 +271,9 @@ void pc_gx_init(void) {
     memset(&g_gx, 0, sizeof(g_gx));
     pc_gx_state_dedup = (getenv("PC_NO_STATE_DEDUP") == NULL);
     pc_gx_uniform_shadow = (getenv("PC_NO_UNIFORM_SHADOW") == NULL);
+    s_stream_vbo = (getenv("PC_NO_STREAM_VBO") == NULL);
+    s_stream_offset = 0;
+    s_attrib_base = -1;
 
     g_gx.projection_type = GX_PERSPECTIVE;
     g_gx.num_tev_stages = 1;
@@ -312,19 +337,15 @@ void pc_gx_init(void) {
     glBindVertexArray(g_gx.vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_gx.vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, PC_GX_MAX_VERTS * sizeof(PCGXVertex), NULL, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,
+                 (s_stream_vbo ? PC_GX_STREAM_VERTS : PC_GX_MAX_VERTS) * sizeof(PCGXVertex),
+                 NULL, GL_STREAM_DRAW);
 
-    {
-        size_t stride = sizeof(PCGXVertex);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(PCGXVertex, position));
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(PCGXVertex, normal));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(PCGXVertex, color0));
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(PCGXVertex, texcoord));
-    }
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+    pc_gx_set_attrib_base(0);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_gx.ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_index_buf), quad_index_buf, GL_STATIC_DRAW);
@@ -814,8 +835,25 @@ void pc_gx_flush_vertices(void) {
         }
     }
 
-    /* VAO/VBO stay bound from init. glBufferData orphans + uploads in one call. */
-    glBufferData(GL_ARRAY_BUFFER, count * sizeof(PCGXVertex), g_gx.vertex_buffer, GL_STREAM_DRAW);
+    /* VAO/VBO stay bound from init. */
+    if (s_stream_vbo) {
+        /* Append at the running offset; orphan only on wrap so the driver
+         * never synchronizes against in-flight draws. */
+        if (s_stream_offset + count > PC_GX_STREAM_VERTS) {
+            glBufferData(GL_ARRAY_BUFFER, PC_GX_STREAM_VERTS * sizeof(PCGXVertex), NULL, GL_STREAM_DRAW);
+            s_stream_offset = 0;
+        }
+        glBufferSubData(GL_ARRAY_BUFFER, s_stream_offset * sizeof(PCGXVertex),
+                        count * sizeof(PCGXVertex), g_gx.vertex_buffer);
+        if (s_attrib_base != s_stream_offset)
+            pc_gx_set_attrib_base(s_stream_offset);
+        s_stream_offset += count;
+    } else {
+        /* Fallback: orphan + upload the whole VBO per flush */
+        glBufferData(GL_ARRAY_BUFFER, count * sizeof(PCGXVertex), g_gx.vertex_buffer, GL_STREAM_DRAW);
+        if (s_attrib_base != 0)
+            pc_gx_set_attrib_base(0);
+    }
 
     /* Upload only dirty state groups */
     if (shader) {

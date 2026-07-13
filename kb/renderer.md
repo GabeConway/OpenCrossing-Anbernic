@@ -36,8 +36,13 @@ calls the GameCube GX API; these files implement it on GL/GLES.
   begin_frame/restore_after_nes; GXLoadTexObj compares g_gx.gl_textures[map]
   + sampler state). Pure-state setters just compare their g_gx fields.
 - Quads draw via a static quad→triangle index buffer (GL_ELEMENT_ARRAY);
-  everything else via glDrawArrays. One VAO/VBO bound forever; per-flush
-  glBufferData orphan+upload.
+  everything else via glDrawArrays. One VAO/VBO bound forever.
+- **Streaming VBO (2026-07-13)**: 6MB buffer (PC_GX_STREAM_VERTS=128k),
+  batches append at a running offset (glBufferSubData), attrib pointers
+  rebase to the batch start (`pc_gx_set_attrib_base`; indices/first stay
+  0-based), orphan only on wrap. Anything adding draw paths must go
+  through the same offset/rebase or rebase to 0 first. Env
+  PC_NO_STREAM_VBO=1 falls back to per-flush glBufferData orphan.
 
 ## Shader system details
 

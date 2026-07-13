@@ -116,8 +116,17 @@ is line-buffered, so future device logs show the crash context.
     every 120 render frames the EMA halves to re-test headroom; genuine
     load re-converges in ~4 frames. Kill switch PC_NO_FPS_PROBE=1.
 
+13. **Streaming VBO (P3)** (2026-07-13, awaiting device test): per-flush
+    `glBufferData` orphan+upload replaced by one 6MB VBO (128k verts);
+    each batch appends at a running offset via glBufferSubData, attrib
+    pointers rebase to the batch start (no BaseVertex dependency — works
+    on any GLES3), orphan only on wrap. Targets the measured 29.5µs/draw
+    dispatch cost (kb/issues.md). Kill switch: PC_NO_STREAM_VBO=1
+    (restores per-flush orphan path).
+
 ## Runtime triage switches (launcher env vars)
 
+- PC_NO_STREAM_VBO=1 — disable streaming VBO (per-flush orphan fallback)
 - PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe
 - PC_NO_UNIFORM_SHADOW=1 — disable per-program uniform value shadowing
 - PC_NO_STATE_DEDUP=1 — disable no-op GX state-set dedup (batch-merge enabler)
