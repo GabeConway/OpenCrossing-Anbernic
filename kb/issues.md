@@ -5,9 +5,15 @@
 - **FPS dips to ~30 walking fast across acre grids** (2026-07-13 device
   test of v0.2.0): overall range is 60↔30 depending on scene; steady areas
   hold 55-60, acre-streaming walks dip to ~30 worst case. Long-term goal:
-  60 stable / most of the time (kb/perf.md "Current state"). Next levers:
-  P3 VBO orphan decision after re-measure, per-TU -O2 on loader/
-  decompression TUs, iso read-ahead (the zero-draw stall class).
+  60 stable / most of the time (kb/perf.md "Current state").
+  P1-log quantification: per-draw GL cost ≈ **29.3µs/draw** (regression
+  over 1521 PERF samples, intercept 1.1ms) — heavy 491-draw scenes cost
+  ~15-19ms gl alone, genuinely capping ~30-35 fps regardless of governor
+  (longest sub-35fps run, 18s, was such a scene: draws=491 gl=19.3ms at
+  98% speed). So the dips = real per-draw overhead → **P3 (VBO orphan /
+  fewer-larger draws) is justified**; re-measure slope on a v0.2.0 log
+  first to see how much P2 uniform shadowing already cut. Other levers:
+  per-TU -O2 on loader/decompression TUs, iso read-ahead.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
@@ -40,12 +46,14 @@
   code during menu/save load. Leads: add timing counters to pc_dvd_read /
   pc_disc reads, consider read-ahead thread or optimizing the decomp's
   decompression TUs (same per-TU -O2 pattern as emu64).
-  2026-07-13 P1-build log confirms pattern persists: 3 zero-draw stalls,
-  worst 3.2s (work=3222ms, gl≈0, draws=0). Now the top remaining stutter
-  class alongside work-dominated moderate stutters (268 of 345 STUTTER
-  lines were work-dominated; gl-dominated was 74, of which the worst were
-  mid-session shader compiles — seed regrown to 101 configs to kill those,
-  kb/perf.md #12).
+  2026-07-13 P1-build log deep-dive: the 3.2s "stall" is frame 3 of BOOT —
+  vanilla's intentional 2500ms sleep ("ニンテンドー発生タイムラグまで寝てます")
+  plus sound_initial2/init, NOT a gameplay stall. Real gameplay stutter
+  classes: (a) 264 work-dominated moderates (avg 42ms total, 50 above
+  50ms, max 148ms) — game logic in -O0 decomp; lever = per-TU -O2
+  expansion (loader/decompression/m_field TUs); (b) gl-dominated spikes,
+  worst were the 24 mid-session shader compiles — fixed by 101-config
+  seed (kb/perf.md #12).
 
 ## Resolved (keep for pattern-matching)
 
