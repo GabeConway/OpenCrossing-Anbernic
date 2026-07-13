@@ -2,25 +2,23 @@
 
 ## Open
 
-- **FPS dips to ~30 walking fast across acre grids** (2026-07-13 device
-  test of v0.2.0): overall range is 60↔30 depending on scene; steady areas
-  hold 55-60, acre-streaming walks dip to ~30 worst case. Long-term goal:
-  60 stable / most of the time (kb/perf.md "Current state").
-  Where it stands after P1-P3 (2026-07-13): per-draw GL cost is
-  ~30µs/draw and did NOT move with P2 (uniform shadowing) or P3
-  (streaming VBO, device-verified working) — it is raw draw-dispatch
-  overhead in the Mali blob. Every sub-35fps run is a 487-578-draw scene
-  (~550 × 30µs ≈ 16ms gl = whole 60fps budget); no governor locks left.
-  **P4 SHIPPED 2026-07-13 (deployed to SD, awaiting device test)**:
-  strip/fan→triangle conversion (merge-capable) + whole-batch CPU
-  frustum cull + PERF batch diagnostics (kb/perf.md #14). Qemu smoke:
-  cull removes ~45% of intro-scene batches; strips/fans fully converted.
-  Next device log: check draws/culled/merged + breaks fields. Breaks
-  data already shows matrix loads (mv=206-241/frame) as the dominant
-  batch breaker ⇒ next lever: CPU pre-transform of positions at
-  accumulation (kill MODELVIEW as a batch breaker), then merging spans
-  objects. Other levers: per-TU -O2 on loader/decompression TUs (264
-  work stutters, avg 42ms), iso read-ahead.
+- **FPS below 60 in heavy scenes** (updated 2026-07-13 post-P4, v0.3.0):
+  P4 (strip conversion + whole-batch CPU cull, kb/perf.md #14)
+  DEVICE-VERIFIED: avg 56.4 fps, median 59.3, 78% ≥55; worst sustained
+  dips 41-44 fps during heaviest acre streaming. **GL is no longer the
+  bottleneck** — gl avg 5.4ms, all 75 gameplay stutters work-dominated
+  (median 24ms, max 114ms), zero gl-dominated. Remaining work to 60
+  stable, in order of expected value:
+  (a) **per-TU -O2 on loader/decompression + m_field/actor TUs** —
+  work-dominated stutters and the 41-44 fps dips are game logic in -O0
+  decomp code (emu64 -O2 template proven safe, kb/perf.md #8);
+  (b) **iso read-ahead thread** — sync SD reads inside work spikes;
+  (c) **CPU pre-transform at accumulation** — matrix loads are 41% of
+  batch breaks and merged=0 all session; pre-transform would let GXBegin
+  merging finally fire (tex breaks 30% remain, so gains capped — measure
+  first). Cull-scan cost at ~500 submitted batches is part of the dip
+  frames; a cheap object-space AABB cache keyed on batch identity could
+  cut it if profiling says so.
 
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the

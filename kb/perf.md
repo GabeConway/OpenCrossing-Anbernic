@@ -1,11 +1,16 @@
 # Performance knowledge & playbook
 
-## Current state (2026-07-13, v0.2.0)
+## Current state (2026-07-13, post-P4, v0.3.0)
 
-FPS ranges between 60 and 30 depending on what's going on — steady areas
-hold 55-60, heavy moments (walking fast across acre grids while they
-stream in) can dip to ~30 worst case. Long-term goal: 60 fps stable, or
-at least most of the time. Game speed holds ~100% throughout (dynamic fps).
+Device log (P4 build, 183 gameplay PERF samples): **avg 56.4 fps, median
+59.3, 78% of samples ≥55** (v0.2.0: avg 52.4, 63% ≥55, dips to 30).
+Worst sustained dips now 41-44 fps during heaviest acre streaming; user
+reports "~20 fps faster on average" feel. Speed avg 98.4%. Zero crashes,
+zero GL errors. **GL is no longer the bottleneck**: gl avg 5.4ms (was
+9.1), draws avg 114.6 (was 271), and ALL 75 gameplay stutters are
+work-dominated (median 24ms, max 114ms; zero gl-dominated). Remaining
+levers are game-side: per-TU -O2 on loader/decompression TUs, iso
+read-ahead, CPU pre-transform (see #14 findings).
 
 ## Fixed so far (chronological, 2026-07-13)
 
@@ -145,8 +150,24 @@ is line-buffered, so future device logs show the crash context.
     never merge today, see GXBegin merging rules).
 
 14. **P4: strip/fan→triangle conversion + whole-batch CPU cull + batch
-    diagnostics** (2026-07-13, deployed to SD, awaiting device test; smoke
-    2x PASS, Mesa screenshot A/B clean — geometry/winding correct):
+    diagnostics** (2026-07-13, DEVICE-VERIFIED same day, shipped v0.3.0;
+    smoke 2x PASS, Mesa screenshot A/B clean — geometry/winding correct).
+    **Device results**: avg 56.4 fps / median 59.3 / 78% ≥55 (was 52.4 /
+    63%); draws avg 114.6 med 109 (was 271); gl avg 5.4ms (was 9.1);
+    0 crashes, 0 GL errors, no visual regressions reported.
+    **The cull is the win**: avg 286, median 386, max 532 batches culled
+    per frame — 60-80% of submitted batches are fully offscreen (the game
+    submits whole acres; the frustum holds a fraction). Worst dips now
+    41-44 fps at ~500 submitted batches (cull scan + game work, not GL).
+    **merged=0 across the whole session**: GXBegin merging never fires on
+    device — ~90% of surviving batches have a state change in between
+    (breaks: mv=41%, tex=30%, begin=19%, light=4%). Conversion's merge
+    payoff is therefore unrealized until matrix loads stop breaking
+    batches (CPU pre-transform idea); its current value is uniform prim
+    stream + cullable strip geometry.
+    **Slope metric caveat**: gl accumulator now includes the cull scan of
+    culled batches, so µs/draw (~44) is NOT comparable to pre-P4 (29.5).
+    Compare total gl ms instead.
     (a) GXBegin converts TRIANGLESTRIP/TRIANGLEFAN to independent triangle
     lists at vertex accumulation (winding-preserving, fan pivots on v0) so
     they merge like triangle batches — strips/fans never merged before.
