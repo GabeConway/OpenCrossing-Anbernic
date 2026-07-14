@@ -10,7 +10,7 @@
 #   ports/ac-gc/AnimalCrossing
 #   ports/ac-gc/shaders/        (canonical copies from pc/shaders/)
 #   ports/ac-gc/rom/README.txt  (user supplies their own GAFE01 iso)
-#   ports/ac-gc/libs.armhf/README.txt (placeholder; device libs are used)
+#   ports/ac-gc/libs.armhf/       (empty; device libs used, fallback .so drop-in)
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
