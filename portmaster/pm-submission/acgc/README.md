@@ -36,7 +36,7 @@ graphics API onto OpenGL ES.
 - **ACreTeam** — the Animal Crossing decompilation (ac-decomp)
 - **flyngmt** — the original PC port
 - **Dia2809** — Linux + GLES groundwork
-- Source & issues: https://github.com/GabeConway/animal-crossing-anbernic
+- Source & issues: https://github.com/GabeConway/OpenCrossing-Anbernic
 
 ## Building
 

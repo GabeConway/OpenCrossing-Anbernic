@@ -33,7 +33,7 @@ jobs:
 
       - name: Package PortMaster zip
         run: |
-          ZIP="animal-crossing-anbernic-${GITHUB_REF_NAME}-armhf.zip"
+          ZIP="opencrossing-anbernic-${GITHUB_REF_NAME}-armhf.zip"
           ./portmaster/make-package.sh pc/build-armhf/bin/AnimalCrossing "$PWD/$ZIP"
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
 

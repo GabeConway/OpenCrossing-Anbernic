@@ -1,15 +1,28 @@
-# Animal Crossing — Native Anbernic Handheld Port
+# OpenCrossing-Anbernic
 
-A **native ARM build of Animal Crossing (GameCube)** for Anbernic handhelds, built
-and tuned for the **RG-34XX SP** (Allwinner H700, Mali-G31) running **muOS** with
-**PortMaster**. This is not emulation: the game's original decompiled C code runs
-directly on the handheld's CPU, with a translation layer mapping the GameCube's GX
-graphics API onto OpenGL ES 3.2.
+**OpenCrossing-Anbernic** is a native ARM port of the Animal Crossing (GameCube)
+decompilation for Anbernic handhelds, built and tuned for the **RG-34XX SP**
+(Allwinner H700, Mali-G31) running **muOS** with **PortMaster**. This is not
+emulation: the game's original decompiled C code runs directly on the handheld's
+CPU, with a translation layer mapping the GameCube's GX graphics API onto
+OpenGL ES 3.2.
+
+Community-confirmed working on other H700 devices too — including the
+**RG28XX running Knulli** (reported after an hour of play with no issues).
 
 This repository contains **no game assets or original assembly whatsoever**. You
-must provide your own disc image of the game.
+must provide your own legally obtained disc image of the game.
 
 Supported game version: `GAFE01` — Animal Crossing (USA), Rev 0.
+
+> ## Disclaimer
+>
+> This project is not affiliated with, endorsed by, or sponsored by Nintendo.
+> "Animal Crossing" and all related names and marks are trademarks of
+> Nintendo; they are used here only to factually describe compatibility.
+> No game assets, ROM contents, or original code ship with this repository —
+> you must supply your own disc image of a game you own. All other trademarks
+> are the property of their respective owners.
 
 > ## ⚠️ Project status
 >
@@ -56,8 +69,9 @@ forward, focused on making the game genuinely good on handheld hardware.
 
 Developed and tested on the **RG-34XX SP**. Every other Anbernic in muOS's
 supported lineup shares the same Allwinner H700 chip (quad Cortex-A53 +
-Mali-G31), so the same binary and rendering path should run on all of them —
-**likely working, but untested**:
+Mali-G31), so the same binary and rendering path should run on all of them.
+A community report also confirms the port runs under **Knulli** (another
+PortMaster-capable CFW), not just muOS:
 
 | Device | Screen | Notes |
 |---|---|---|
@@ -65,7 +79,7 @@ Mali-G31), so the same binary and rendering path should run on all of them —
 | RG34XX | 720×480 (3:2) | Same screen and chip as the SP; safest bet |
 | RG35XX SP / Plus / H / 2024 / Pro | 640×480 (4:3) | Native 4:3 — the game's original aspect |
 | RG40XX H / RG40XX V | 640×480 (4:3) | Same as above on a 4" panel |
-| RG28XX | 640×480 (4:3) | Small screen; overlay menu scales but is cozy |
+| RG28XX | 640×480 (4:3) | ✅ Community-tested on **Knulli** — an hour of play, no issues reported |
 | RG CubeXX | 720×720 (1:1) | Square panel — expect letterboxing |
 
 The launcher and settings already handle 4:3 output and letterbox/stretch
@@ -86,7 +100,7 @@ Animal Crossing (USA) as an `.iso` file.
 
 1. **Download the release zip.** Go to the
    [latest release](../../releases/latest) and download
-   `animal-crossing-anbernic-vX.Y.Z-armhf.zip` (under "Assets").
+   `opencrossing-anbernic-vX.Y.Z-armhf.zip` (under "Assets").
 2. **Unzip it** on your computer. Inside you'll find a folder called `ports`
    and a file called `Animal Crossing.sh`.
 3. **Plug the device's SD card into your computer.** Power the handheld off,
