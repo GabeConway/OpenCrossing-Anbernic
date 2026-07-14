@@ -6,6 +6,12 @@
   worked great" — confirms both a second H700 device (640×480 4:3, 2.83"
   screen) AND a second CFW (Knulli, not just muOS). Same binary, no
   changes. Listed in README supported-devices table.
+- **RG35XX SP** (2026-07-14 user report): "works great", praised install
+  instructions. No analog stick on this device — user needed the in-game
+  Control menu toggle **"Use Dpad as Joystick"** to walk. Tip added to
+  README. Idea: auto-enable dpad-as-joystick when no analog stick is
+  detected at startup (SDL axis count) — removes the one manual step for
+  the whole stickless clamshell family.
 
 ## Hardware: Anbernic RG-34XX SP
 
