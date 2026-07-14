@@ -1,5 +1,12 @@
 # Target device & deployment
 
+## Community-confirmed devices (beyond the dev device)
+
+- **RG28XX on Knulli** (2026-07-14 user report): "played for an hour,
+  worked great" — confirms both a second H700 device (640×480 4:3, 2.83"
+  screen) AND a second CFW (Knulli, not just muOS). Same binary, no
+  changes. Listed in README supported-devices table.
+
 ## Hardware: Anbernic RG-34XX SP
 
 - SoC: Allwinner H700, 4x Cortex-A53 (~1.5 GHz), armv7 userland (armhf)

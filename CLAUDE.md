@@ -1,9 +1,14 @@
 # CLAUDE.md
 
-Native Animal Crossing (GameCube decomp) build for Anbernic handhelds —
-standalone project since 2026-07-13, bootstrapped from the Dia2809 fork of
+**OpenCrossing-Anbernic** (repo GabeConway/OpenCrossing-Anbernic, renamed
+2026-07-14 from animal-crossing-anbernic for trademark hygiene) — native
+Animal Crossing (GameCube decomp) build for Anbernic handhelds, standalone
+project since 2026-07-13, bootstrapped from the Dia2809 fork of
 flyngmt/ACGC-PC-Port (credited in README). Target: **RG-34XX SP** (Allwinner
 H700 Cortex-A53 armhf, Mali-G31 GLES-only, 720x480, muOS + PortMaster).
+Community-confirmed also on RG28XX/Knulli. Runtime paths (`ports/ac-gc/`,
+launcher name "Animal Crossing.sh") deliberately unchanged by the rename —
+renaming those would break existing installs.
 
 ## Ground rules
 
