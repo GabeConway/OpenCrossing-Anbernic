@@ -2,41 +2,6 @@
 
 ## Open
 
-- **Item dupe: save while holding a tool → reload → copy in hands AND
-  pockets** (2026-07-14, user repro with shovel; PARKED mid-investigation).
-  Save-file forensics (SD card_a `DobutsunomoriP_MURA.gci` + rotated .baks;
-  layout: GCI 64B header, Save_t at file_data+0x26000 and duplicate copy at
-  +0x4C000, Private_c at save+0x20 (0x2440 each), pockets at priv+0x68
-  (15×u16 BE), equipment at priv+0x4A4, ITM_SHOVEL=0x2202) prove the
-  mechanism:
-  - bak2 = the save taken while holding: equipment=0x2202, pockets contain
-    NO shovel → **save-side is CORRECT**.
-  - bak1 = next save after reloading: equipment STILL 0x2202 AND shovel now
-    in pocket slot 7 → **dupe is created on the LOAD/game-start path**:
-    something stows a copy of `equipment` into a free pocket slot
-    (mPr_SetFreePossessionItem-like) but fails to clear `equipment`.
-  - Latest .gci: equipment=0, shovels in slots 13+14 (player stowed the
-    held one) — matches report.
-  - Both Save_t copies in each file identical → not a main/backup merge.
-  - pc_save_bswap.c swaps pockets+equipment symmetrically → not byte-swap.
-  - Equip flow (submenu pickup) DOES clear the pocket slot when taking a
-    tool into hands (verified in overlay code) — so the held tool is
-    legitimately absent from pockets in the save.
-  Suspects for the load-side stow: game-start pipeline
-  `mCD_InitGameStart_bg` (m_card.c; called from player-select NPC,
-  ac_npc_p_sel2_talk.c_inc:610) — note `mCD_InitGameStart_bg_write_bk`
-  (m_card.c ~5077-5092) clears equipment ONLY when
-  `Common_Get(player_decoy_flag)==TRUE`; if the stow elsewhere in that
-  pipeline (make_data/set_data or the p_sel flow) runs unconditionally
-  while this clear is decoy-gated, that's the dupe. NEXT STEPS: finish
-  tracing mCD_InitGameStart_bg_make_data / player-select start flow for
-  the stow call; `git diff upstream/master -- src/game/m_card.c` (and
-  p_sel npc files) to check port-introduced divergence — could also be a
-  vanilla GC bug the port merely exposes (PC always boots through the
-  player-select path). Fix direction once the stow site is confirmed:
-  make the equipment clear unconditional at the stow site (stow+clear
-  atomic), then repro: equip shovel → save → quit → load → check pockets.
-
 - **One-time 1.4s hang at the dock/beach, first visit** (2026-07-14 device log,
   v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
   work=1422.4ms gl=8.4ms tex=0.0ms draws=73` — single isolated frame, session
@@ -124,6 +89,29 @@
 
 ## Resolved (keep for pattern-matching)
 
+- **Item dupe: save while holding a tool → reload → copy in hands AND
+  pockets** (RESOLVED 2026-07-15; opened 2026-07-14, GCI forensics detail
+  in git history of this file). Root cause: NOT a pipeline stow —
+  `src/game/m_card.c` is excluded from the PC build (pc/CMakeLists.txt
+  ~384), so the whole GC `mCD_InitGameStart_bg` pipeline, including the
+  decoy-gated equipment clear (~5086), is dead code; the port's
+  replacement in pc_m_card.c does no inventory writes. Exhaustive
+  enumeration of every `equipment`/`pockets[]` writer in linked code
+  proved no load-time stow exists; the save-while-holding state
+  (equipment=0x2202, its pocket slot empty) simply survives the PC load —
+  GC re-reads the card each start and never surfaces that state — and the
+  held copy then gets re-materialized into the first free pocket slot
+  in-session. Only non-atomic transaction on the whole surface: the
+  submenu's deferred PLAYER-slot grab (`mTG_catch_item_from_table`
+  m_tag_ovl.c:2917 arms shared `wait_timer=16`; completion+clear deferred
+  to m_tag_ovl.c:8018-8028, cursor-state dependent, timer shared with the
+  money-sack flows). Fix: pc_m_card.c `mCD_InitGameStart_bg` normalizes
+  at game start — stows held `equipment` via `mPr_SetFreePossessionItem`
+  and clears `equipment` in the same step (clear iff stow succeeded;
+  pockets full → stays in hands, never destroyed). Held+pocket-copy state
+  now unconstructible from a reload. Device repro to confirm: equip
+  shovel → save → quit → load → shovel in pockets, hands empty; log line
+  `[PC] InitGameStart: stowed held item 0x2202`.
 - Wrong resolution on 640×480 panels until users hand-edited the .sh
   (2026-07-15, RG35XX H report): launcher first-run settings.ini hardcoded
   720×480 (dev-device value). Now the launcher writes no

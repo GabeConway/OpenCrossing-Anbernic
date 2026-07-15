@@ -809,6 +809,27 @@ int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s3
                 OSReport("[PC] InitGameStart: OUTGOING_FOREIGNER — landed player_no=%d\n",
                          Common_Get(player_no));
             }
+
+            /* Shovel dupe fix (save while holding a tool): a save taken while
+             * holding keeps the tool in `equipment` with its pocket slot empty.
+             * On GC the load path never re-materializes that state visibly, but
+             * on PC it survives into the session and the held copy ends up
+             * duplicated into the free pocket slot while `equipment` stays set.
+             * Normalize at game start: stow the held item into a free pocket
+             * slot and clear `equipment` in the same step (stow+clear atomic).
+             * If the pockets are full, leave it in the player's hands — never
+             * destroy the item. */
+            {
+                Private_c* priv = Now_Private;
+
+                if (priv != NULL && priv->equipment != EMPTY_NO) {
+                    if (mPr_SetFreePossessionItem(priv, priv->equipment, mPr_ITEM_COND_NORMAL) == TRUE) {
+                        OSReport("[PC] InitGameStart: stowed held item 0x%04X into pockets\n",
+                                 priv->equipment);
+                        priv->equipment = EMPTY_NO;
+                    }
+                }
+            }
         } else if (start_cond == mCD_START_COND_0 || start_cond == mCD_START_COND_2) {
             mSDI_StartDataInit(gamePT, player_no, mSDI_INIT_MODE_NEW);
             pc_save_ready = 1;
