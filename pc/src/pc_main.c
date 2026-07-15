@@ -147,6 +147,10 @@ void pc_platform_init(void) {
     }
     fprintf(stderr, "[PC] SDL video driver: %s\n", SDL_GetCurrentVideoDriver());
 
+    /* No resolution in settings.ini: match the panel's native mode (RG35XX
+     * 640x480, RG-34XX SP 720x480, CubeXX 720x720). Explicit ini values win. */
+    pc_settings_autodetect_resolution();
+
 #ifdef PC_USE_GLES
     fprintf(stderr, "[PC] GL profile: GLES 3.1\n");
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);

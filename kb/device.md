@@ -9,9 +9,24 @@
 - **RG35XX SP** (2026-07-14 user report): "works great", praised install
   instructions. No analog stick on this device — user needed the in-game
   Control menu toggle **"Use Dpad as Joystick"** to walk. Tip added to
-  README. Idea: auto-enable dpad-as-joystick when no analog stick is
-  detected at startup (SDL axis count) — removes the one manual step for
-  the whole stickless clamshell family.
+  README. Done (2026-07-15): dpad_as_stick is now tri-state (0=off, 1=on,
+  2=auto, default auto) — at controller open, auto enables
+  dpad-as-joystick when SDL_JoystickNumAxes==0 or the mapping lacks
+  leftx/lefty (SDL 2.0.0-safe APIs, no HasAxis). Explicit 0/1 in
+  settings.ini is never overridden; old inis carrying 0 need Auto
+  selected once in the Control menu (or an ini delete) to pick it up.
+- **RG35XX (Plus/2024 line) on Knulli** (2026-07-15 user feedback via
+  maintainer): "works perfectly stable". Exact model not specified —
+  listed on the Plus/2024/Pro row in the README table. Knulli
+  confirmations now: RG28XX, RG40XX V, RG35XX.
+- **RG35XX H on modded stock OS** (2026-07-15, issue #1): tested up to
+  house selection with a **.ciso** image (30MB) — confirms the .ciso path
+  works on-device. Third H700 device and third OS (muOS, Knulli, modded
+  stock). Log clean: SDL video driver `mali`, Mali-G31, GLES 3.2, 640×480
+  fullscreen; one ALSA `snd_pcm_recover` underrun, nothing else. Quirk:
+  **Select and Menu keys are reversed** on modded stock OS (applies to all
+  PortMaster games there) — Menu/Function opens settings, Select+Start
+  exits. Noted in README. Listed in README supported-devices table.
 
 ## Hardware: Anbernic RG-34XX SP
 
@@ -65,3 +80,15 @@ dumps an "--- audio diag ---" block into log.txt.
   only with verbose on; tex=ms high → texture decode burst, gl=ms high →
   driver/GL overhead, work high with others low → game logic
 - `[PERF] ...` — periodic; needs verbose=1 (settings.ini or --verbose)
+- `[Settings] Auto-detected display WxH (window_size=N)` — resolution
+  auto-detect fired (stderr since 2026-07-15)
+- `[PC] Controller '...': no analog stick detected, auto-enabling Dpad as
+  Joystick` — dpad auto (only printed when setting is 2=auto)
+
+**Log truncation gotcha (2026-07-15)**: the stdout tail of log.txt (all
+gameplay telemetry — PERF/STUTTER/PROF) is LOST on force-quit +
+unclean unmount/power-off, even with line-buffered stdout. A device log
+that ends mid-boot after a long session means lost tail, not a
+boot-loop. Before pulling a log for analysis (especially the dock-hang
+[PROF] capture): quit via the in-game exit, then eject the SD cleanly.
+Boot-critical diagnostics print on stderr (unbuffered) for this reason.

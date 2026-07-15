@@ -1,5 +1,6 @@
 /* pc_os.c - Dolphin OS replacement: arena, timers, threads, message queues */
 #include "pc_platform.h"
+#include "pc_prof.h"
 
 #include <time.h>
 
@@ -30,7 +31,13 @@ static s64 gc_epoch_offset_ticks = 0; /* Ticks from GC epoch to program start */
 s64 osGetTime(void) {
     u64 now = SDL_GetPerformanceCounter();
     u64 freq = SDL_GetPerformanceFrequency();
-    s64 elapsed = (s64)((now - time_base_start) * (u64)GC_TIMER_CLOCK / freq);
+    u64 diff = now - time_base_start;
+    /* Split whole seconds from the remainder before scaling to GC ticks:
+     * diff * GC_TIMER_CLOCK overflows u64 after ~455s of uptime when freq
+     * is 1GHz (Linux CLOCK_MONOTONIC), which made the in-game clock wrap
+     * back every ~7.6 minutes. rem < freq, so rem * GC_TIMER_CLOCK fits. */
+    s64 elapsed = (s64)((diff / freq) * (u64)GC_TIMER_CLOCK
+                      + (diff % freq) * (u64)GC_TIMER_CLOCK / freq);
     return gc_epoch_offset_ticks + elapsed;
 }
 
@@ -327,12 +334,16 @@ void OSPanic(const char* file, int line, const char* msg, ...) {
 }
 
 void OSReport(const char* fmt, ...) {
-    if (!g_pc_verbose) return;
+    unsigned long long t0;
     va_list args;
+    if (!g_pc_verbose) return;
+    t0 = pc_prof_now_us();
     va_start(args, fmt);
     vprintf(fmt, args);
     va_end(args);
     fflush(stdout);
+    /* stdout is SD-backed on device — catches log-write stalls */
+    pc_prof_report("os_report", 0, t0);
 }
 
 void OSVReport(const char* fmt, va_list list) {

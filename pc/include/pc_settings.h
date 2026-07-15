@@ -24,7 +24,7 @@ typedef struct {
     int render_scale;     /* render resolution %: 100, 75, 50, 25 */
     int window_size;      /* 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom */
     int scale_mode;       /* 0=stretch, 1=center (letterbox) */
-    int dpad_as_stick;    /* 0=off, 1=on — dpad directions also drive main stick */
+    int dpad_as_stick;    /* 0=off, 1=on, 2=auto — dpad directions also drive main stick (auto: on when controller has no analog stick) */
     int left_deadzone;    /* left stick deadzone 0-50 (percent of axis range) */
     int right_deadzone;   /* right stick deadzone 0-50 (percent of axis range) */
     int swap_ab_xy;       /* 0=off, 1=on — swap A↔B and X↔Y on the hardcoded gamepad path */
@@ -50,6 +50,9 @@ float pc_settings_cull_limit_xz(float cull_distance, float cull_radius);
 void pc_settings_load(void);
 void pc_settings_save(void);
 void pc_settings_apply(void);
+/* After SDL video init, before window creation: if settings.ini did not set
+ * a resolution, adopt the display's native mode. */
+void pc_settings_autodetect_resolution(void);
 void pc_settings_reset_controllers(void);
 
 #ifdef __cplusplus

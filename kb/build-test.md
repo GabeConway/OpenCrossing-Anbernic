@@ -14,7 +14,10 @@ target tuning flags (`-mcpu=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard`)
 and runs an in-container smoke attempt (its xvfb run may fail on missing
 xauth — that's the container, not the binary; use the harness instead).
 
-**Colima/docker gotcha**: legacy builder (no buildx) silently ignores
+**Colima/docker gotcha**: `exec format error` from an arm container means
+qemu binfmt handlers aren't registered in the colima VM — run
+`docker run --privileged --rm tonistiigi/binfmt --install arm` once per VM
+(2026-07-15). Also: legacy builder (no buildx) silently ignores
 `--platform` when an arm64 base image is cached. Verify any image/container
 with `uname -m` → must print `armv7l`. `acgc-smoke-deps:armhf` was once
 silently arm64 and had to be rebuilt via `docker commit` from an explicit
@@ -29,9 +32,19 @@ silently arm64 and had to be rebuilt via `docker commit` from an explicit
 - `./harness/run-native.sh` — macOS native build, fastest iteration loop.
 - Rom: `harness/rom/Animal Crossing.iso` (GAFE01 USA, 1459978240 bytes).
   Git-ignored. **Never commit anything under harness/rom/.**
+- `./harness/check-launcher-sync.sh` — normalized diff of the three launcher
+  .sh copies (GAMEDIR/PORT_32BIT lines intentionally differ). Run before
+  every release package.
+- `./harness/inspect-gci.py <gci>` — save forensics (equipment/pockets dump).
 - Verifying the shader disk cache end-to-end: run smoke twice; second run's
   log must show `[PC/TEV] Preloaded N shader(s) from disk cache`
   (cache file lands in `pc/build-armhf/bin/shader_cache.bin`).
+- Verifying resolution auto-detect in smoke (2026-07-15): comment out
+  `window_width/height/size` in `pc/build-armhf/bin/settings.ini` and set
+  `fullscreen = 1` → log must show `[Settings] Auto-detected display WxH`
+  (Xvfb screen is 1280x1024 → window_size=6 custom). Restore the ini after.
+  Smoke can NOT exercise gameplay paths (no scripted input) — shovel-dupe
+  stow, clock long-run, and dpad-on-stickless remain device/human tests.
 
 ## Desktop/macOS build
 

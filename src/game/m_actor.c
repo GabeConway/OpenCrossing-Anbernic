@@ -21,6 +21,7 @@
 #ifdef TARGET_PC
 #include "pc_platform.h"
 #include "pc_settings.h"
+#include "pc_prof.h"
 #endif
 
 #ifdef MUST_MATCH
@@ -462,8 +463,8 @@ extern void Actor_info_call_actor(GAME_PLAY* play, Actor_info* actor_info) {
     ACTOR* actor;
     int i;
 
-    mFI_FieldMove(player_actor->actor_class.world.position);
-    mBI_move(play);
+    PC_PROF("field_move", 0, mFI_FieldMove(player_actor->actor_class.world.position));
+    PC_PROF("born_item", 0, mBI_move(play));
 
     for (i = 0; i < ACTOR_PART_NUM; i++) {
         ACTOR* next;
@@ -480,7 +481,7 @@ extern void Actor_info_call_actor(GAME_PLAY* play, Actor_info* actor_info) {
             if (actor->ct_proc != NULL) {
                 if (Actor_data_bank_dma_end_check(actor, play) == TRUE) {
                     play->game.doing_point_specific = 152;
-                    (*actor->ct_proc)(actor, (GAME*)play);
+                    PC_PROF("actor_ct", actor->id, (*actor->ct_proc)(actor, (GAME*)play));
                     play->game.doing_point_specific = 153;
                     actor->ct_proc = NULL;
                 }
@@ -518,7 +519,7 @@ extern void Actor_info_call_actor(GAME_PLAY* play, Actor_info* actor_info) {
                     if ((actor->state_bitfield & (ACTOR_STATE_NO_MOVE_WHILE_CULLED | ACTOR_STATE_NO_CULL)) ||
                         actor->part == ACTOR_PART_NPC) {
                         play->game.doing_point_specific = 161;
-                        (*actor->mv_proc)(actor, (GAME*)play);
+                        PC_PROF("actor_mv", actor->id, (*actor->mv_proc)(actor, (GAME*)play));
                         play->game.doing_point_specific = 162;
                     }
 
@@ -557,7 +558,7 @@ extern void Actor_info_draw_actor(GAME_PLAY* play, Actor_info* actor_info) {
                 if ((actor->state_bitfield & (ACTOR_STATE_NO_DRAW_WHILE_CULLED | ACTOR_STATE_NO_CULL))) {
                     if ((actor->state_bitfield & ACTOR_STATE_INVISIBLE) == 0 && actor->cull_while_talking == FALSE &&
                         actor->skip_drawing == FALSE) {
-                        Actor_draw(play, actor);
+                        PC_PROF("actor_dw", actor->id, Actor_draw(play, actor));
                         actor->drawn = TRUE;
                     }
                 } else {

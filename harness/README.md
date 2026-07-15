@@ -17,6 +17,11 @@ A GameCube disc image (GAFE01 USA, `.iso`/`.gcm`/`.ciso`) must be placed in `har
 - `run-gles-arm64.sh` — interactive tier-2 run under XQuartz (needs `xhost +localhost`, XQuartz "Allow connections from network clients").
 - `smoke.sh [arm64|armhf]` — headless boot check in Docker: launches the game under Xvfb,
   waits for frames, dumps `harness/out/<arch>-smoke.log`. Exit 0 = booted past disc load.
+- `check-launcher-sync.sh` — verifies the three hand-maintained launcher `.sh`
+  copies haven't drifted (ignores the intentional GAMEDIR/PORT_32BIT
+  differences). Run before packaging a release.
+- `inspect-gci.py <file.gci>` — dumps equipment + pockets from a save for
+  forensics (see kb/issues.md shovel-dupe entry for the layout).
 
 ## One-time setup
 

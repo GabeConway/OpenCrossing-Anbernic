@@ -13,6 +13,36 @@
 
 static SDL_GameController* g_controller = NULL;
 
+/* Set when the opened controller has no usable left analog stick (RG35XX SP and
+ * other stickless devices). Drives dpad_as_stick=2 (auto). */
+static int g_pad_no_analog_stick = 0;
+
+static void pad_detect_analog(void) {
+    /* Runtime-safe on any SDL2: joystick axis count (2.0.0) + mapping bind for
+     * leftx/lefty (2.0.0) instead of SDL_GameControllerHasAxis (2.0.14+). */
+    SDL_Joystick* joy = SDL_GameControllerGetJoystick(g_controller);
+    SDL_GameControllerButtonBind bx = SDL_GameControllerGetBindForAxis(g_controller, SDL_CONTROLLER_AXIS_LEFTX);
+    SDL_GameControllerButtonBind by = SDL_GameControllerGetBindForAxis(g_controller, SDL_CONTROLLER_AXIS_LEFTY);
+
+    g_pad_no_analog_stick = (joy && SDL_JoystickNumAxes(joy) == 0) ||
+                            bx.bindType == SDL_CONTROLLER_BINDTYPE_NONE ||
+                            by.bindType == SDL_CONTROLLER_BINDTYPE_NONE;
+    if (g_pc_settings.dpad_as_stick == 2) {
+        const char* name = SDL_GameControllerName(g_controller);
+        printf("[PC] Controller '%s': %s\n", name ? name : "?",
+               g_pad_no_analog_stick
+                   ? "no analog stick detected, auto-enabling Dpad as Joystick"
+                   : "analog stick detected, Dpad as Joystick stays off (auto)");
+    }
+}
+
+/* Effective dpad_as_stick: resolves 2 (auto) via stick detection at controller open */
+int pc_pad_dpad_as_stick_active(void) {
+    if (g_pc_settings.dpad_as_stick == 2)
+        return g_controller ? g_pad_no_analog_stick : 0;
+    return g_pc_settings.dpad_as_stick;
+}
+
 /* L1 double-tap detection for zoom reset */
 #define L1_DOUBLETAP_MS 300
 static Uint32 l1_last_release = 0;
@@ -25,6 +55,7 @@ BOOL PADInit(void) {
         if (SDL_IsGameController(i)) {
             g_controller = SDL_GameControllerOpen(i);
             if (g_controller) {
+                pad_detect_analog();
                 break;
             }
         }
@@ -115,7 +146,7 @@ u32 PADRead(PADStatus* status) {
         for (int i = 0; i < SDL_NumJoysticks(); i++) {
             if (SDL_IsGameController(i)) {
                 g_controller = SDL_GameControllerOpen(i);
-                if (g_controller) break;
+                if (g_controller) { pad_detect_analog(); break; }
             }
         }
     }
@@ -229,7 +260,7 @@ u32 PADRead(PADStatus* status) {
     }
 
     /* D-pad also drives main analog stick (overrides axis when pressed) */
-    if (g_pc_settings.dpad_as_stick) {
+    if (pc_pad_dpad_as_stick_active()) {
         if (buttons & PAD_BUTTON_LEFT)  stickX = -STICK_MAGNITUDE;
         if (buttons & PAD_BUTTON_RIGHT) stickX =  STICK_MAGNITUDE;
         if (buttons & PAD_BUTTON_DOWN)  stickY = -STICK_MAGNITUDE;
