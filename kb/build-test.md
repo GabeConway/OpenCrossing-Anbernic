@@ -32,6 +32,10 @@ silently arm64 and had to be rebuilt via `docker commit` from an explicit
 - `./harness/run-native.sh` — macOS native build, fastest iteration loop.
 - Rom: `harness/rom/Animal Crossing.iso` (GAFE01 USA, 1459978240 bytes).
   Git-ignored. **Never commit anything under harness/rom/.**
+- `./harness/check-launcher-sync.sh` — normalized diff of the three launcher
+  .sh copies (GAMEDIR/PORT_32BIT lines intentionally differ). Run before
+  every release package.
+- `./harness/inspect-gci.py <gci>` — save forensics (equipment/pockets dump).
 - Verifying the shader disk cache end-to-end: run smoke twice; second run's
   log must show `[PC/TEV] Preloaded N shader(s) from disk cache`
   (cache file lands in `pc/build-armhf/bin/shader_cache.bin`).
