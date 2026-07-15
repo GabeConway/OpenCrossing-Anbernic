@@ -12,6 +12,14 @@
   README. Idea: auto-enable dpad-as-joystick when no analog stick is
   detected at startup (SDL axis count) — removes the one manual step for
   the whole stickless clamshell family.
+- **RG35XX H on modded stock OS** (2026-07-15, issue #1): tested up to
+  house selection with a **.ciso** image (30MB) — confirms the .ciso path
+  works on-device. Third H700 device and third OS (muOS, Knulli, modded
+  stock). Log clean: SDL video driver `mali`, Mali-G31, GLES 3.2, 640×480
+  fullscreen; one ALSA `snd_pcm_recover` underrun, nothing else. Quirk:
+  **Select and Menu keys are reversed** on modded stock OS (applies to all
+  PortMaster games there) — Menu/Function opens settings, Select+Start
+  exits. Noted in README. Listed in README supported-devices table.
 
 ## Hardware: Anbernic RG-34XX SP
 

@@ -78,7 +78,8 @@ PortMaster-capable CFW), not just muOS:
 | RG-34XX SP | 720×480 (3:2) | ✅ Tested — the development device |
 | RG34XX | 720×480 (3:2) | Same screen and chip as the SP; safest bet |
 | RG35XX SP | 640×480 (4:3) | ✅ Community-tested — works great; see D-pad tip below |
-| RG35XX Plus / H / 2024 / Pro | 640×480 (4:3) | Native 4:3 — the game's original aspect |
+| RG35XX H | 640×480 (4:3) | ✅ Community-tested on **modded stock OS** — works; see button note below |
+| RG35XX Plus / 2024 / Pro | 640×480 (4:3) | Native 4:3 — the game's original aspect |
 | RG40XX H / RG40XX V | 640×480 (4:3) | Same as above on a 4" panel |
 | RG28XX | 640×480 (4:3) | ✅ Community-tested on **Knulli** — an hour of play, no issues reported |
 | RG CubeXX | 720×720 (1:1) | Square panel — expect letterboxing |
@@ -92,6 +93,11 @@ the "untested" column.
 **Tip for devices without an analog stick (or if walking doesn't work):**
 press **Select** to open the in-game menu, go to **Control**, and toggle on
 **"Use Dpad as Joystick"**. (Thanks to the RG35XX SP tester for this one.)
+
+**Note for modded stock OS:** the **Select** and **Menu** keys are reversed
+(true for all PortMaster games on modded stock OS) — press the
+**Menu/Function** key for the in-game settings menu, and **Select+Start** to
+exit the game. (Thanks to the RG35XX H tester.)
 
 Non-H700 devices (older RG35XX models on other chips, RK3566 devices, etc.)
 are **not** expected to work with the release builds.
