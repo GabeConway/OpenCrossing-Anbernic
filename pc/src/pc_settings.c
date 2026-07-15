@@ -372,9 +372,9 @@ void pc_settings_autodetect_resolution(void) {
     if (g_pc_settings.fullscreen == 0) return;
 
     if (SDL_GetCurrentDisplayMode(0, &dm) != 0 || dm.w <= 0 || dm.h <= 0) {
-        printf("[Settings] Display auto-detect failed (%s), keeping %dx%d\n",
-               SDL_GetError(),
-               g_pc_settings.window_width, g_pc_settings.window_height);
+        fprintf(stderr, "[Settings] Display auto-detect failed (%s), keeping %dx%d\n",
+                SDL_GetError(),
+                g_pc_settings.window_width, g_pc_settings.window_height);
         return;
     }
 
@@ -390,8 +390,8 @@ void pc_settings_autodetect_resolution(void) {
     s_auto_w = g_pc_settings.window_width;
     s_auto_h = g_pc_settings.window_height;
     s_auto_size = g_pc_settings.window_size;
-    printf("[Settings] Auto-detected display %dx%d (window_size=%d)\n",
-           dm.w, dm.h, g_pc_settings.window_size);
+    fprintf(stderr, "[Settings] Auto-detected display %dx%d (window_size=%d)\n",
+            dm.w, dm.h, g_pc_settings.window_size);
 }
 
 void pc_settings_apply(void) {

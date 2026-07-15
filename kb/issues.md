@@ -109,9 +109,10 @@
   at game start — stows held `equipment` via `mPr_SetFreePossessionItem`
   and clears `equipment` in the same step (clear iff stow succeeded;
   pockets full → stays in hands, never destroyed). Held+pocket-copy state
-  now unconstructible from a reload. Device repro to confirm: equip
-  shovel → save → quit → load → shovel in pockets, hands empty; log line
-  `[PC] InitGameStart: stowed held item 0x2202`.
+  now unconstructible from a reload. DEVICE-VERIFIED 2026-07-15: user
+  repro confirms hands empty + no new dupe after reload; GCI bytes
+  confirm equipment=0x0000, shovel count stable (the pre-fix pair from
+  the original dupe remains in pockets, as expected).
 - Wrong resolution on 640×480 panels until users hand-edited the .sh
   (2026-07-15, RG35XX H report): launcher first-run settings.ini hardcoded
   720×480 (dev-device value). Now the launcher writes no
@@ -124,6 +125,14 @@
   `[Settings] Auto-detected display WxH (window_size=N)`. Note: the three
   launcher .sh copies (port_files/, portmaster/, pm-submission/) are
   hand-maintained duplicates — assemble.sh does not copy them.
+  DEVICE-VERIFIED 2026-07-15 (RG-34XX SP): fresh ini → 720×480 fullscreen
+  window, saved ini carries `# window_width = 720` / `# window_size = 5`
+  commented (auto mode persisted). The log line itself was missing from
+  log.txt — the log's tail (all gameplay stdout) was truncated by an
+  unclean unmount/power-off, so autodetect prints moved to stderr
+  (matches pc_main boot-log convention). Lesson: quit via in-game exit
+  and eject cleanly before reading device logs, or the buffered tail
+  (incl. any [PROF] lines) is lost.
 - In-game clock frozen on device: correct at boot/character select, then
   ~1 in-game min per 24 real min (2026-07-15, RG28XX user repro 6:03→6:04
   over 24 min) → u64 overflow in pc_os.c osGetTime():
@@ -135,6 +144,8 @@
   splitting whole seconds from remainder before tick scaling
   ((diff/freq)*CLK + (diff%freq)*CLK/freq) — overflow-free. If clock bugs
   recur, first suspect other cumulative-counter * constant multiplies.
+  DEVICE-VERIFIED 2026-07-15: clock tracks real time through a full play
+  session ("i think the clock is fixed too" — user, >10 min session).
 - Intro train black screen → decomp code must build unoptimized (kb/perf.md).
 - First-boot menu music stutter → shader seed warmup during splash.
 - No audio → 32-bit PipeWire env in launcher (kb/device.md).
