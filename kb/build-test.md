@@ -32,6 +32,12 @@ silently arm64 and had to be rebuilt via `docker commit` from an explicit
 - Verifying the shader disk cache end-to-end: run smoke twice; second run's
   log must show `[PC/TEV] Preloaded N shader(s) from disk cache`
   (cache file lands in `pc/build-armhf/bin/shader_cache.bin`).
+- Verifying resolution auto-detect in smoke (2026-07-15): comment out
+  `window_width/height/size` in `pc/build-armhf/bin/settings.ini` and set
+  `fullscreen = 1` → log must show `[Settings] Auto-detected display WxH`
+  (Xvfb screen is 1280x1024 → window_size=6 custom). Restore the ini after.
+  Smoke can NOT exercise gameplay paths (no scripted input) — shovel-dupe
+  stow, clock long-run, and dpad-on-stickless remain device/human tests.
 
 ## Desktop/macOS build
 
