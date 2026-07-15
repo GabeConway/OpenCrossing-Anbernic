@@ -9,9 +9,12 @@
 - **RG35XX SP** (2026-07-14 user report): "works great", praised install
   instructions. No analog stick on this device — user needed the in-game
   Control menu toggle **"Use Dpad as Joystick"** to walk. Tip added to
-  README. Idea: auto-enable dpad-as-joystick when no analog stick is
-  detected at startup (SDL axis count) — removes the one manual step for
-  the whole stickless clamshell family.
+  README. Done (2026-07-15): dpad_as_stick is now tri-state (0=off, 1=on,
+  2=auto, default auto) — at controller open, auto enables
+  dpad-as-joystick when SDL_JoystickNumAxes==0 or the mapping lacks
+  leftx/lefty (SDL 2.0.0-safe APIs, no HasAxis). Explicit 0/1 in
+  settings.ini is never overridden; old inis carrying 0 need Auto
+  selected once in the Control menu (or an ini delete) to pick it up.
 - **RG35XX H on modded stock OS** (2026-07-15, issue #1): tested up to
   house selection with a **.ciso** image (30MB) — confirms the .ciso path
   works on-device. Third H700 device and third OS (muOS, Knulli, modded

@@ -219,7 +219,12 @@ static void menu_get_value(int item, char* buf, int sz) {
         break;
     case MI_VERBOSE:         snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
     case MI_CTRL_SWAP_AB:    snprintf(buf, sz, "%s", g_pc_settings.swap_ab_xy ? "ON" : "OFF"); break;
-    case MI_CTRL_DPAD_STICK: snprintf(buf, sz, "%s", g_pc_settings.dpad_as_stick ? "ON" : "OFF"); break;
+    case MI_CTRL_DPAD_STICK:
+        if (g_pc_settings.dpad_as_stick == 2)
+            snprintf(buf, sz, "Auto (%s)", pc_pad_dpad_as_stick_active() ? "ON" : "OFF");
+        else
+            snprintf(buf, sz, "%s", g_pc_settings.dpad_as_stick ? "ON" : "OFF");
+        break;
     case MI_LEFT_DEADZONE:   snprintf(buf, sz, "%d%%", g_pc_settings.left_deadzone); break;
     case MI_RIGHT_DEADZONE:  snprintf(buf, sz, "%d%%", g_pc_settings.right_deadzone); break;
     case MI_CTRL_RESET:      snprintf(buf, sz, "Press >"); break;
@@ -373,7 +378,13 @@ static void menu_adjust(int item, int dir) {
         pc_keybindings_save();
         break;
     }
-    case MI_CTRL_DPAD_STICK: g_pc_settings.dpad_as_stick ^= 1; break;
+    case MI_CTRL_DPAD_STICK: {
+        /* Cycle OFF -> ON -> Auto */
+        int v = g_pc_settings.dpad_as_stick + dir;
+        if (v < 0) v = 2; if (v > 2) v = 0;
+        g_pc_settings.dpad_as_stick = v;
+        break;
+    }
     case MI_LEFT_DEADZONE: {
         int v = g_pc_settings.left_deadzone + dir * 5;
         if (v < 0) v = 0; if (v > 50) v = 50;

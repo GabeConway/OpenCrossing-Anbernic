@@ -31,7 +31,7 @@ PCSettings g_pc_settings = {
     .render_scale  = 100,
     .window_size   = 2,    /* 640x480 default (matches device screen) */
     .scale_mode    = 0,
-    .dpad_as_stick  = 0,
+    .dpad_as_stick  = 2,   /* auto: enable when controller has no analog stick (RG35XX SP etc.) */
     .left_deadzone  = 0,
     .right_deadzone = 0,
     .swap_ab_xy     = 0,
@@ -99,8 +99,8 @@ static const char* DEFAULT_SETTINGS =
     "verbose = 1\n"
     "\n"
     "[Controls]\n"
-    "# D-pad also drives main analog stick: 0 = off, 1 = on\n"
-    "dpad_as_stick = 0\n"
+    "# D-pad also drives main analog stick: 0 = off, 1 = on, 2 = auto (on when controller has no analog stick)\n"
+    "dpad_as_stick = 2\n"
     "\n"
     "# Left/right stick deadzone in percent (0-50, increments of 5)\n"
     "left_deadzone = 0\n"
@@ -187,7 +187,7 @@ static void apply_setting(const char* key, const char* value) {
     } else if (strcmp(key, "zoom_enabled") == 0) {
         if (val == 0 || val == 1) g_pc_settings.zoom_enabled = val;
     } else if (strcmp(key, "dpad_as_stick") == 0) {
-        if (val == 0 || val == 1) g_pc_settings.dpad_as_stick = val;
+        if (val >= 0 && val <= 2) g_pc_settings.dpad_as_stick = val;
     } else if (strcmp(key, "left_deadzone") == 0) {
         if (val >= 0 && val <= 50) g_pc_settings.left_deadzone = val;
     } else if (strcmp(key, "right_deadzone") == 0) {
@@ -275,7 +275,7 @@ void pc_settings_save(void) {
     fprintf(f, "verbose = %d\n", g_pc_settings.verbose);
     fprintf(f, "\n");
     fprintf(f, "[Controls]\n");
-    fprintf(f, "# D-pad also drives main analog stick: 0 = off, 1 = on\n");
+    fprintf(f, "# D-pad also drives main analog stick: 0 = off, 1 = on, 2 = auto (on when controller has no analog stick)\n");
     fprintf(f, "dpad_as_stick = %d\n", g_pc_settings.dpad_as_stick);
     fprintf(f, "\n");
     fprintf(f, "# Left/right stick deadzone in percent (0-50)\n");
@@ -318,7 +318,7 @@ int pc_settings_get_nes_aspect(void) {
 }
 
 void pc_settings_reset_controllers(void) {
-    g_pc_settings.dpad_as_stick = 0;
+    g_pc_settings.dpad_as_stick = 2;  /* default: auto */
     g_pc_settings.left_deadzone  = 0;
     g_pc_settings.right_deadzone = 0;
     g_pc_settings.swap_ab_xy    = 0;
