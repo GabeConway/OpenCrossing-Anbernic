@@ -28,14 +28,15 @@ cd "$GAMEDIR"
 # stdout on the device shell, truncating log.txt at early init.
 exec >> "$GAMEDIR/log.txt" 2>&1
 
-# First-run settings tuned for 720x480 handheld (Mali-G31): fullscreen,
-# no MSAA, vsync on, dynamic FPS target. The in-game settings menu can
-# change all of these afterwards.
+# First-run settings tuned for these handhelds (Mali-G31): fullscreen,
+# no MSAA, vsync on, dynamic FPS target. Resolution is intentionally NOT
+# set here: the game auto-detects the panel's native mode at startup
+# (RG35XX 640x480, RG-34XX SP 720x480, CubeXX 720x720). Add
+# window_width/window_height under [Graphics] only to force a resolution.
+# The in-game settings menu can change all of these afterwards.
 if [ ! -f "$GAMEDIR/settings.ini" ]; then
 cat > "$GAMEDIR/settings.ini" <<'EOF'
 [Graphics]
-window_width = 720
-window_height = 480
 fullscreen = 1
 vsync = 1
 msaa = 0

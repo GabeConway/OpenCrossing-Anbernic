@@ -47,11 +47,20 @@ PCSettings g_pc_settings = {
 
 static const char* SETTINGS_FILE = "settings.ini";
 
+/* Set when settings.ini contains an explicit resolution key. When none are
+ * present, the panel's native resolution is auto-detected at startup (see
+ * pc_settings_autodetect_resolution). */
+static int s_resolution_from_ini = 0;
+/* What auto-detect picked, so pc_settings_save keeps resolution in auto mode
+ * unless the user actually changed it. */
+static int s_auto_w = 0, s_auto_h = 0, s_auto_size = -1;
+
 static const char* DEFAULT_SETTINGS =
     "[Graphics]\n"
-    "# Window size (ignored in fullscreen)\n"
-    "window_width = 640\n"
-    "window_height = 480\n"
+    "# Window size (ignored in fullscreen). Leave commented to auto-detect the\n"
+    "# display's native resolution at startup; uncomment to force one.\n"
+    "# window_width = 640\n"
+    "# window_height = 480\n"
     "\n"
     "# 0 = windowed, 1 = fullscreen, 2 = borderless fullscreen\n"
     "fullscreen = 0\n"
@@ -74,8 +83,9 @@ static const char* DEFAULT_SETTINGS =
     "# Render scale %%: 100=native, 75, 50, 25 (lower = faster on limited hardware)\n"
     "render_scale = 100\n"
     "\n"
-    "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=720x480 (device native), 6=custom\n"
-    "window_size = 5\n"
+    "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=720x480, 6=custom\n"
+    "# Leave commented to auto-detect from the display.\n"
+    "# window_size = 5\n"
     "\n"
     "# Scale mode: 0=stretch to fill screen, 1=center (letterbox)\n"
     "scale_mode = 0\n"
@@ -146,9 +156,9 @@ static void apply_setting(const char* key, const char* value) {
     int val = atoi(value);
 
     if (strcmp(key, "window_width") == 0) {
-        if (val >= 320) g_pc_settings.window_width = val;
+        if (val >= 320) { g_pc_settings.window_width = val; s_resolution_from_ini = 1; }
     } else if (strcmp(key, "window_height") == 0) {
-        if (val >= 240) g_pc_settings.window_height = val;
+        if (val >= 240) { g_pc_settings.window_height = val; s_resolution_from_ini = 1; }
     } else if (strcmp(key, "fullscreen") == 0) {
         if (val >= 0 && val <= 2) g_pc_settings.fullscreen = val;
     } else if (strcmp(key, "vsync") == 0) {
@@ -169,7 +179,7 @@ static void apply_setting(const char* key, const char* value) {
         if (val == 25 || val == 50 || val == 75 || val == 100)
             g_pc_settings.render_scale = val;
     } else if (strcmp(key, "window_size") == 0) {
-        if (val >= 0 && val <= 6) g_pc_settings.window_size = val;
+        if (val >= 0 && val <= 6) { g_pc_settings.window_size = val; s_resolution_from_ini = 1; }
     } else if (strcmp(key, "scale_mode") == 0) {
         if (val == 0 || val == 1) g_pc_settings.scale_mode = val;
     } else if (strcmp(key, "verbose") == 0) {
@@ -230,10 +240,20 @@ void pc_settings_save(void) {
         printf("[Settings] Failed to write %s\n", SETTINGS_FILE);
         return;
     }
-    fprintf(f, "[Graphics]\n");
-    fprintf(f, "# Window size (ignored in fullscreen)\n");
-    fprintf(f, "window_width = %d\n", g_pc_settings.window_width);
-    fprintf(f, "window_height = %d\n", g_pc_settings.window_height);
+    /* Keep resolution in auto-detect mode unless it was set in the ini or
+     * changed in the settings menu: commented keys are skipped on load. */
+    {
+        int res_auto = !s_resolution_from_ini && s_auto_size >= 0 &&
+                       g_pc_settings.window_width  == s_auto_w &&
+                       g_pc_settings.window_height == s_auto_h &&
+                       g_pc_settings.window_size   == s_auto_size;
+        const char* rp = res_auto ? "# " : "";
+        fprintf(f, "[Graphics]\n");
+        fprintf(f, "# Window size (ignored in fullscreen). Leave commented to auto-detect the\n");
+        fprintf(f, "# display's native resolution at startup; uncomment to force one.\n");
+        fprintf(f, "%swindow_width = %d\n", rp, g_pc_settings.window_width);
+        fprintf(f, "%swindow_height = %d\n", rp, g_pc_settings.window_height);
+    }
     fprintf(f, "\n");
     fprintf(f, "# 0 = windowed, 1 = fullscreen, 2 = borderless fullscreen\n");
     fprintf(f, "fullscreen = %d\n", g_pc_settings.fullscreen);
@@ -255,8 +275,12 @@ void pc_settings_save(void) {
     fprintf(f, "# Render scale %%: 100=native, 75, 50, 25\n");
     fprintf(f, "render_scale = %d\n", g_pc_settings.render_scale);
     fprintf(f, "\n");
-    fprintf(f, "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom\n");
-    fprintf(f, "window_size = %d\n", g_pc_settings.window_size);
+    fprintf(f, "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=720x480, 6=custom\n");
+    fprintf(f, "# Leave commented to auto-detect from the display.\n");
+    fprintf(f, "%swindow_size = %d\n",
+            (!s_resolution_from_ini && s_auto_size >= 0 &&
+             g_pc_settings.window_size == s_auto_size) ? "# " : "",
+            g_pc_settings.window_size);
     fprintf(f, "\n");
     fprintf(f, "# Scale mode: 0=stretch to fill screen, 1=center (letterbox)\n");
     fprintf(f, "scale_mode = %d\n", g_pc_settings.scale_mode);
@@ -337,6 +361,38 @@ static const int s_window_presets[6][2] = {
 
 /* FPS target enum -> actual Hz */
 static const int s_fps_target_hz[7] = {60, 50, 40, 30, 20, 0, 60}; /* 6=dynamic starts at 60 */
+
+void pc_settings_autodetect_resolution(void) {
+    SDL_DisplayMode dm;
+
+    if (s_resolution_from_ini) return;
+
+    /* Windowed (desktop dev): keep the 640x480 default rather than opening a
+     * desktop-sized window. Handheld launchers always run fullscreen. */
+    if (g_pc_settings.fullscreen == 0) return;
+
+    if (SDL_GetCurrentDisplayMode(0, &dm) != 0 || dm.w <= 0 || dm.h <= 0) {
+        printf("[Settings] Display auto-detect failed (%s), keeping %dx%d\n",
+               SDL_GetError(),
+               g_pc_settings.window_width, g_pc_settings.window_height);
+        return;
+    }
+
+    g_pc_settings.window_width  = dm.w;
+    g_pc_settings.window_height = dm.h;
+    g_pc_settings.window_size   = 6; /* custom */
+    for (int i = 0; i < 6; i++) {
+        if (s_window_presets[i][0] == dm.w && s_window_presets[i][1] == dm.h) {
+            g_pc_settings.window_size = i;
+            break;
+        }
+    }
+    s_auto_w = g_pc_settings.window_width;
+    s_auto_h = g_pc_settings.window_height;
+    s_auto_size = g_pc_settings.window_size;
+    printf("[Settings] Auto-detected display %dx%d (window_size=%d)\n",
+           dm.w, dm.h, g_pc_settings.window_size);
+}
 
 void pc_settings_apply(void) {
     if (!g_pc_window) return;

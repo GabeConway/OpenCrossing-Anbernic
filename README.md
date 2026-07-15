@@ -142,6 +142,10 @@ Saves, settings, key bindings, and logs are written next to the binary in
   `.iso`, `.gcm`, or `.ciso` works.
 - **No audio:** quit and relaunch the game once — the audio stack sometimes
   needs a second start after first install.
+- **Wrong resolution / picture doesn't fit the screen:** the port
+  auto-detects your panel's resolution on launch. To force a specific one,
+  uncomment and edit `window_width` / `window_height` in
+  `ports/ac-gc/settings.ini`.
 - **Device won't wake cleanly after closing the lid (muOS clamshells):**
   that's a known muOS firmware quirk on the 34XX SP (fix coming in the next
   muOS release), not something this port controls — press the power button

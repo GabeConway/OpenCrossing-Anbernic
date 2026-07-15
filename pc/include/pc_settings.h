@@ -50,6 +50,9 @@ float pc_settings_cull_limit_xz(float cull_distance, float cull_radius);
 void pc_settings_load(void);
 void pc_settings_save(void);
 void pc_settings_apply(void);
+/* After SDL video init, before window creation: if settings.ini did not set
+ * a resolution, adopt the display's native mode. */
+void pc_settings_autodetect_resolution(void);
 void pc_settings_reset_controllers(void);
 
 #ifdef __cplusplus

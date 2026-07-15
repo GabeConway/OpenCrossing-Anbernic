@@ -124,6 +124,18 @@
 
 ## Resolved (keep for pattern-matching)
 
+- Wrong resolution on 640×480 panels until users hand-edited the .sh
+  (2026-07-15, RG35XX H report): launcher first-run settings.ini hardcoded
+  720×480 (dev-device value). Now the launcher writes no
+  window_width/height; the game queries SDL_GetCurrentDisplayMode(0) after
+  SDL_Init when settings.ini sets no resolution key and fullscreen=1
+  (640×480→preset 2, 720×480→preset 5, CubeXX 720×720→custom; existing
+  letterbox/stretch handles aspect). Explicit ini values and in-game menu
+  changes still win; saves keep resolution commented while in auto mode so
+  cards stay portable across panels. Log:
+  `[Settings] Auto-detected display WxH (window_size=N)`. Note: the three
+  launcher .sh copies (port_files/, portmaster/, pm-submission/) are
+  hand-maintained duplicates — assemble.sh does not copy them.
 - In-game clock frozen on device: correct at boot/character select, then
   ~1 in-game min per 24 real min (2026-07-15, RG28XX user repro 6:03→6:04
   over 24 min) → u64 overflow in pc_os.c osGetTime():
