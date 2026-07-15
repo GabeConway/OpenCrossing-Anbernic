@@ -83,7 +83,7 @@ Developed on the **RG-34XX SP**; every H700 Anbernic shares the same chip
 | RG34XX | 720×480 (3:2) | Same screen and chip as the SP; safest bet |
 | RG35XX SP | 640×480 (4:3) | ✅ Community-tested — works great |
 | RG35XX H | 640×480 (4:3) | ✅ Community-tested on **modded stock OS** |
-| RG35XX Plus / 2024 / Pro | 640×480 (4:3) | Native 4:3 — the game's original aspect |
+| RG35XX Plus / 2024 / Pro | 640×480 (4:3) | ✅ Community-tested on **Knulli** — "perfectly stable" |
 | RG40XX V | 640×480 (4:3) | ✅ Community-tested on **Knulli** (two reports) |
 | RG40XX H | 640×480 (4:3) | Same chip and screen as the V; expected to work |
 | RG28XX | 640×480 (4:3) | ✅ Community-tested on **Knulli** |

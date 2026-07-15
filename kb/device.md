@@ -15,6 +15,10 @@
   leftx/lefty (SDL 2.0.0-safe APIs, no HasAxis). Explicit 0/1 in
   settings.ini is never overridden; old inis carrying 0 need Auto
   selected once in the Control menu (or an ini delete) to pick it up.
+- **RG35XX (Plus/2024 line) on Knulli** (2026-07-15 user feedback via
+  maintainer): "works perfectly stable". Exact model not specified —
+  listed on the Plus/2024/Pro row in the README table. Knulli
+  confirmations now: RG28XX, RG40XX V, RG35XX.
 - **RG35XX H on modded stock OS** (2026-07-15, issue #1): tested up to
   house selection with a **.ciso** image (30MB) — confirms the .ciso path
   works on-device. Third H700 device and third OS (muOS, Knulli, modded
