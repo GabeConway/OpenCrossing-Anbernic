@@ -40,6 +40,7 @@
 #include "padmgr.h"
 #ifdef TARGET_PC
 #include "pc_diag.h"
+#include "pc_prof.h"
 #include "pc_platform.h"
 #endif
 
@@ -508,39 +509,39 @@ static void Game_play_move_fbdemo_not_move(GAME* game) {
     game->doing_point_specific = 0x8F;
     game->doing_point = 1;
 
-    mSM_submenu_ctrl(play);
+    PC_PROF("submenu_ctrl", 0, mSM_submenu_ctrl(play));
 
     if (play->submenu.process_status == mSM_PROCESS_WAIT) {
         game->doing_point = 2;
-        mDemo_Main(play);
+        PC_PROF("demo_main", 0, mDemo_Main(play));
         game->doing_point = 3;
-        mEv_run(&play->event);
+        PC_PROF("ev_run", 0, mEv_run(&play->event));
     }
 
     game->doing_point = 4;
     mDemo_stock_clear();
     game->doing_point = 5;
-    mSc_dmacopy_data_bank(&play->object_exchange);
+    PC_PROF("dmacopy_bank", 0, mSc_dmacopy_data_bank(&play->object_exchange));
     game->doing_point = 6;
-    mSM_submenu_move(&play->submenu);
+    PC_PROF("submenu_move", 0, mSM_submenu_move(&play->submenu));
 
     if (play->submenu.process_status == mSM_PROCESS_WAIT) {
         play->game_frame++;
         mVibctl_clr_force_stop(2);
         game->doing_point = 7;
-        CollisionCheck_OC(game, &play->collision_check);
+        PC_PROF("coll_oc", 0, CollisionCheck_OC(game, &play->collision_check));
         game->doing_point = 8;
         CollisionCheck_clear(game, &play->collision_check);
         game->doing_point = 9;
         game->doing_point = 0;
         game->doing_point_specific = 0x90;
-        Actor_info_call_actor(play, &play->actor_info);
+        PC_PROF("call_actor", 0, Actor_info_call_actor(play, &play->actor_info));
         game->doing_point = 0;
         game->doing_point_specific = 0x91;
         game->doing_point = 1;
         mCoBG_CalcTimerDecalCircle();
         game->doing_point = 2;
-        mMsg_Main(game);
+        PC_PROF("msg_main", 0, mMsg_Main(game));
     } else {
         mVibctl_set_force_stop(2);
     }
@@ -583,11 +584,11 @@ static void Game_play_move(GAME* game) {
         game->doing_point = 0;
         game->doing_point_specific = 0x92;
         game->doing_point = 1;
-        Game_play_camera_proc(play);
+        PC_PROF("camera_proc", 0, Game_play_camera_proc(play));
         game->doing_point = 2;
-        mPO_business_proc(play);
+        PC_PROF("business", 0, mPO_business_proc(play));
         game->doing_point = 3;
-        mTRC_move(game);
+        PC_PROF("trc_move", 0, mTRC_move(game));
         game->doing_point = 4;
         Balloon_move(play);
         mEnv_ManagePointLight(play, &play->kankyo, &play->global_light);
@@ -893,11 +894,11 @@ extern void play_main(GAME* game) {
     game->doing_point_specific = 0x8C;
 
     if ((GETREG(HREG, 80) != 10) || (GETREG(HREG, 81) != 0)) {
-        Game_play_move(game);
+        PC_PROF("play_move", 0, Game_play_move(game));
     }
     game->doing_point = 0;
     game->doing_point_specific = 0xAA;
-    Game_play_draw(play);
+    PC_PROF("play_draw", 0, Game_play_draw(play));
 
     game->doing_point = 0;
     game->doing_point_specific = 0xB4;

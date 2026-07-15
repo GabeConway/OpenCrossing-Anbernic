@@ -207,6 +207,17 @@ is line-buffered, so future device logs show the crash context.
   average, with breakdown: `work` (game logic+GL calls), `swap`, `gl`
   (accumulated flush time), `tex` (accumulated texture decode+upload time),
   `draws`.
+- `[PROF]` slow-phase profiler (pc/src/pc_prof.c, added 2026-07-14 to hunt
+  the one-time 1.4s dock hang): logs `[PROF] tag(0xID): X.XXXms` for any
+  probed phase over PC_PROF_MS ms (env var, default 50). Probes: game_main /
+  sAdo_frame (graph.c), play_move / play_draw / submenu_ctrl / demo_main /
+  ev_run / dmacopy_bank / submenu_move / coll_oc / call_actor / msg_main /
+  camera_proc / business / trc_move (m_play.c), field_move / born_item /
+  actor_ct / actor_mv / actor_dw with actor profile id (m_actor.c),
+  dvd_read with length (pc_dvd.c), os_report = stdout/SD write stall
+  (pc_os.c), card_write (pc_card.c). Always on; overhead is two
+  clock_gettime per probe below threshold. Attribute a [STUTTER] by the
+  [PROF] lines adjacent to it in the log.
 - Attribute dips: high `tex` → decode burst; high `gl` → uniform/draw
   overhead; high `work` others low → game logic (check -O flags first);
   `swap` high → GPU-bound (lower render scale).

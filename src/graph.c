@@ -28,6 +28,7 @@
 #ifdef TARGET_PC
 #include "pc_model_viewer.h"
 #include "pc_diag.h"
+#include "pc_prof.h"
 #include "pc_platform.h"
 #include "pc_settings.h"
 #include <setjmp.h>
@@ -306,7 +307,11 @@ static void graph_main(GRAPH* this, GAME* game) {
     game->disable_display = FALSE;
     GRAPH_SET_DOING_POINT(this, GAME_MAIN);
     PC_DIAG(10, "graph_main: calling game_main (exec=%p)\n", (void*)game->exec);
+#ifdef TARGET_PC
+    PC_PROF("game_main", 0, game_main(game));
+#else
     game_main(game);
+#endif
     PC_DIAG(10, "graph_main: game_main returned, frame_counter=%d\n", this->frame_counter);
     GRAPH_SET_DOING_POINT(this, GAME_MAIN_FINISHED);
     if (ResetStatus < IRQ_RESET_DELAY) {
@@ -347,7 +352,7 @@ static void graph_main(GRAPH* this, GAME* game) {
                 fprintf(stderr, "[PC] CRASH in sAdo_GameFrame! addr=0x%08X data=0x%08X\n",
                        pc_crash_get_addr(), pc_crash_get_data_addr());
             } else {
-                sAdo_GameFrame();
+                PC_PROF("sAdo_frame", 0, sAdo_GameFrame());
             }
             pc_crash_set_jmpbuf(NULL);
         }

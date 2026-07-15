@@ -2,6 +2,33 @@
 
 ## Open
 
+- **One-time 1.4s hang at the dock/beach, first visit** (2026-07-14 device log,
+  v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
+  work=1422.4ms gl=8.4ms tex=0.0ms draws=73` — single isolated frame, session
+  otherwise ~60fps (one PERF dip 20.1fps = the window containing it; the
+  avg=80.7ms EMA is fully explained by the one spike). Footstep SEs show WOOD
+  (0x4204) right up to the hang, GRASS (0x4201) right after → fired while
+  on/leaving the dock planks. Systematically ruled out by source trace:
+  GPU/shader (gl=8.4ms, zero compiles logged near it), texture decode
+  (tex=0.0), runtime disc I/O (acre geometry is RAM-resident from boot via
+  pc_assets; forest_1st/2nd.arc mounted to malloc'd ARAM at boot; runtime
+  "ARAM DMA" is pure memcpy pc_aram.c:41; audiorom.img 8.3MB fully preloaded
+  in pc_neos_init_sync at boot, jaudio runtime bank loads are memcpys on the
+  AudioProducer SDL thread; JKRDecomp/JKRDvdRipper callers are boot-only),
+  GCI save (only written at session end). Conclusion: a silent one-shot CPU
+  burst inside a single game-logic tick in -O0 decomp code (beach item/actor
+  born pass, event-manager beach scans ac_event_manager.c:860-907, or similar
+  first-visit path), or an external stall (stdout is SD-backed and WALK/TRG
+  debug prints fire several lines per frame while dashing). mFI shell
+  placement (m_field_info.c:2990-3155) examined and exonerated — loops are
+  bounded small. NOT reproducible on 2nd visit (one-time), so instrument
+  first: DONE 2026-07-14 — `[PROF]` slow-phase profiler shipped on dev
+  (see kb/perf.md Measuring). Next SD-card log with the hang will carry
+  `[PROF]` lines naming the phase (and actor profile id if it's a ct/mv).
+  Then per-TU -O2 (emu64 template) on m_field_info.c / m_field_make.c /
+  ac_event_manager.c + actor spawn path — attacks this AND the sustained
+  acre-streaming dips regardless of which candidate wins.
+
 - **FPS below 60 in heavy scenes** (updated 2026-07-13 post-P4, v0.3.0):
   P4 (strip conversion + whole-batch CPU cull, kb/perf.md #14)
   DEVICE-VERIFIED: avg 56.4 fps, median 59.3, 78% ≥55; worst sustained

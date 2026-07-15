@@ -2,6 +2,7 @@
  * Channel 0 (Slot A) → save/card_a/
  * Channel 1 (Slot B) → save/card_b/ */
 #include "pc_platform.h"
+#include "pc_prof.h"
 #include <sys/stat.h>   /* mkdir (Linux), stat */
 #ifdef _WIN32
 #include <direct.h>  /* _mkdir */
@@ -217,11 +218,13 @@ s32 CARDReadAsync(void* fileInfo, void* buf, s32 length, s32 offset, void* callb
 }
 
 s32 CARDWrite(CARDFileInfo_PC* fileInfo, const void* buf, s32 length, s32 offset) {
+    unsigned long long t0 = pc_prof_now_us();
     CARDOpenSlot* slot = card_slot_find(fileInfo);
     if (!slot || !slot->fp) return CARD_RESULT_NOFILE;
     fseek(slot->fp, offset, SEEK_SET);
     if ((s32)fwrite(buf, 1, length, slot->fp) != length) return CARD_RESULT_IOERROR;
     fflush(slot->fp);
+    pc_prof_report("card_write", (int)length, t0);
     return CARD_RESULT_READY;
 }
 

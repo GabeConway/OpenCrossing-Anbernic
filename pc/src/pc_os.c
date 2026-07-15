@@ -1,5 +1,6 @@
 /* pc_os.c - Dolphin OS replacement: arena, timers, threads, message queues */
 #include "pc_platform.h"
+#include "pc_prof.h"
 
 #include <time.h>
 
@@ -327,12 +328,16 @@ void OSPanic(const char* file, int line, const char* msg, ...) {
 }
 
 void OSReport(const char* fmt, ...) {
-    if (!g_pc_verbose) return;
+    unsigned long long t0;
     va_list args;
+    if (!g_pc_verbose) return;
+    t0 = pc_prof_now_us();
     va_start(args, fmt);
     vprintf(fmt, args);
     va_end(args);
     fflush(stdout);
+    /* stdout is SD-backed on device — catches log-write stalls */
+    pc_prof_report("os_report", 0, t0);
 }
 
 void OSVReport(const char* fmt, va_list list) {

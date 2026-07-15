@@ -1,6 +1,7 @@
 /* pc_dvd.c - DVD filesystem: reads from disc image (CISO/ISO/GCM) or extracted files */
 #include "pc_platform.h"
 #include "pc_disc.h"
+#include "pc_prof.h"
 
 typedef struct {
     char gameName[4];
@@ -161,9 +162,8 @@ BOOL DVDClose(void* fileInfo) {
     return TRUE;
 }
 
-s32 DVDReadPrio(void* fileInfo, void* buf, s32 length, s32 offset, s32 prio) {
+static s32 dvd_read_prio_impl(void* fileInfo, void* buf, s32 length, s32 offset) {
     FILE* fp = *dvd_fi_fp(fileInfo);
-    (void)prio;
 
     if (fp == DISC_SENTINEL) {
         /* disc image read */
@@ -179,6 +179,15 @@ s32 DVDReadPrio(void* fileInfo, void* buf, s32 length, s32 offset, s32 prio) {
 
     fseek(fp, offset, SEEK_SET);
     return (s32)fread(buf, 1, length, fp);
+}
+
+s32 DVDReadPrio(void* fileInfo, void* buf, s32 length, s32 offset, s32 prio) {
+    unsigned long long t0 = pc_prof_now_us();
+    s32 r;
+    (void)prio;
+    r = dvd_read_prio_impl(fileInfo, buf, length, offset);
+    pc_prof_report("dvd_read", (int)length, t0);
+    return r;
 }
 
 s32 DVDRead(void* fileInfo, void* buf, s32 length, s32 offset) {
