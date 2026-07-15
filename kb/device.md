@@ -80,3 +80,15 @@ dumps an "--- audio diag ---" block into log.txt.
   only with verbose on; tex=ms high → texture decode burst, gl=ms high →
   driver/GL overhead, work high with others low → game logic
 - `[PERF] ...` — periodic; needs verbose=1 (settings.ini or --verbose)
+- `[Settings] Auto-detected display WxH (window_size=N)` — resolution
+  auto-detect fired (stderr since 2026-07-15)
+- `[PC] Controller '...': no analog stick detected, auto-enabling Dpad as
+  Joystick` — dpad auto (only printed when setting is 2=auto)
+
+**Log truncation gotcha (2026-07-15)**: the stdout tail of log.txt (all
+gameplay telemetry — PERF/STUTTER/PROF) is LOST on force-quit +
+unclean unmount/power-off, even with line-buffered stdout. A device log
+that ends mid-boot after a long session means lost tail, not a
+boot-loop. Before pulling a log for analysis (especially the dock-hang
+[PROF] capture): quit via the in-game exit, then eject the SD cleanly.
+Boot-critical diagnostics print on stderr (unbuffered) for this reason.

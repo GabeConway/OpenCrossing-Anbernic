@@ -60,7 +60,9 @@ the disc image (no extraction); saves, settings, and logs live in
   `.ciso` all work.
 - **No audio:** quit and relaunch once — the audio stack sometimes needs a
   second start after first install.
-- **Can't walk / no analog stick:** press **Select** → **Control** → toggle
+- **Can't walk / no analog stick:** current builds detect stickless
+  controllers and enable D-pad walking automatically. On older builds (or
+  to override): press **Select** → **Control** → set
   **"Use Dpad as Joystick"**.
 - **Wrong resolution:** the port auto-detects your panel on launch; to force
   one, uncomment `window_width` / `window_height` in

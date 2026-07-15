@@ -79,6 +79,23 @@
     per-device tip attributions — testers: RG35XX SP (dpad tip), RG35XX H
     modded stock (Select/Menu swap, issue #1).
 
+- **2026-07-15** — Big fix day, all four changes DEVICE-VERIFIED same day
+  on the RG-34XX SP (details kb/issues.md Resolved):
+  (1) in-game clock freeze (u64 overflow in osGetTime, 455.5s wrap) —
+  from an RG28XX community report; (2) shovel save-while-holding dupe
+  (game-start stow+clear in pc_m_card.c; the long-suspected GC pipeline
+  stow never existed — m_card.c is excluded from the PC build);
+  (3) resolution auto-detect (launcher no longer hardcodes 720×480);
+  (4) dpad-as-joystick auto-enable on stickless pads (tri-state setting).
+  GitHub issue #1 (RG35XX H modded stock OS works) closed with docs.
+  r/ANBERNIC showcase thread (~600 upvotes/44K views) mined for docs:
+  RG40XX V + RG35XX Knulli confirmations, FAQ added, README condensed.
+  Process notes: first local armhf build via colima (needed
+  `tonistiigi/binfmt --install arm` once; CI builds now user-approval
+  only to save Actions minutes); smoke harness can exercise the
+  auto-detect path (kb/build-test.md); device log stdout tail is lost on
+  unclean unmount — see kb/device.md "Reading device logs".
+
 ## Standing decisions
 
 - Device build (armhf) is the product; desktop builds exist for development.

@@ -14,7 +14,10 @@ target tuning flags (`-mcpu=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard`)
 and runs an in-container smoke attempt (its xvfb run may fail on missing
 xauth — that's the container, not the binary; use the harness instead).
 
-**Colima/docker gotcha**: legacy builder (no buildx) silently ignores
+**Colima/docker gotcha**: `exec format error` from an arm container means
+qemu binfmt handlers aren't registered in the colima VM — run
+`docker run --privileged --rm tonistiigi/binfmt --install arm` once per VM
+(2026-07-15). Also: legacy builder (no buildx) silently ignores
 `--platform` when an arm64 base image is cached. Verify any image/container
 with `uname -m` → must print `armv7l`. `acgc-smoke-deps:armhf` was once
 silently arm64 and had to be rebuilt via `docker commit` from an explicit
