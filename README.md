@@ -80,7 +80,8 @@ PortMaster-capable CFW), not just muOS:
 | RG35XX SP | 640×480 (4:3) | ✅ Community-tested — works great; see D-pad tip below |
 | RG35XX H | 640×480 (4:3) | ✅ Community-tested on **modded stock OS** — works; see button note below |
 | RG35XX Plus / 2024 / Pro | 640×480 (4:3) | Native 4:3 — the game's original aspect |
-| RG40XX H / RG40XX V | 640×480 (4:3) | Same as above on a 4" panel |
+| RG40XX V | 640×480 (4:3) | ✅ Community-tested on **Knulli** — "worked perfectly" (two reports) |
+| RG40XX H | 640×480 (4:3) | Same chip and screen as the V; expected to work |
 | RG28XX | 640×480 (4:3) | ✅ Community-tested on **Knulli** — an hour of play, no issues reported |
 | RG CubeXX | 720×720 (1:1) | Square panel — expect letterboxing |
 
@@ -141,8 +142,27 @@ Saves, settings, key bindings, and logs are written next to the binary in
   `.iso`, `.gcm`, or `.ciso` works.
 - **No audio:** quit and relaunch the game once — the audio stack sometimes
   needs a second start after first install.
+- **Device won't wake cleanly after closing the lid (muOS clamshells):**
+  that's a known muOS firmware quirk on the 34XX SP (fix coming in the next
+  muOS release), not something this port controls — press the power button
+  to wake.
 - **Reporting a bug:** attach `ports/ac-gc/log.txt` from the SD card — it's
   rewritten on every launch and contains the diagnostics we need.
+
+## FAQ
+
+- **Does the Deluxe mod work?** Not yet. Porting it is technically possible
+  but a large amount of work, so don't expect it any time soon.
+- **Can you port other GameCube games the same way?** Only games with a
+  complete decompilation can be ported like this — see
+  [decomp.dev](https://decomp.dev) for which projects are close. A finished
+  decompilation still doesn't guarantee a Linux or H700 port, but it makes
+  one possible.
+- **How much RAM does it need?** It runs comfortably on both the 2GB
+  (RG34XX family) and 1GB (RG35XX / RG28XX family) devices — community
+  reports cover both.
+- **Does it run on desktop Linux / PC?** That's what the upstream project
+  targets — see the credits section. This fork focuses on H700 handhelds.
 
 ## Releases & branches
 
