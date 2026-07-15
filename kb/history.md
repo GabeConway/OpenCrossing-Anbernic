@@ -42,6 +42,43 @@
   buffer strategy → future perf work targets draw COUNT. README gained
   the H700 "likely working devices" table.
 
+- **2026-07-15** — README condensed ~255→160 lines and reordered
+  (about → install → troubleshooting → devices → FAQ → the rest) after the
+  r/ANBERNIC thread brought a wave of new users; install steps kept intact
+  (community-praised). Cut content archived here so nothing is lost:
+  - **"Why this project exists" section** (full text): the ac-decomp
+    decompilation made a PC port possible; the ports this project descends
+    from target x86 desktops with desktop OpenGL, and none run on the
+    low-power ARM handhelds the game feels made for — a pocket town to
+    check in on anywhere. Getting there required work beyond a recompile:
+    (1) 32-bit ARM (armhf) build for the H700's Cortex-A53 cores via a
+    Debian bookworm Docker toolchain; (2) OpenGL ES-only rendering path
+    for the Mali-G31 (no desktop GL on device), with runtime-specialized
+    branchless TEV fragment shaders — Mali GPUs are extremely slow at the
+    dynamic branching an "uber-shader" needs; (3) shader binary disk cache
+    with boot-time preload so compile hitches only ever happen the first
+    time a material is seen; (4) handheld performance features: dynamic
+    FPS target, render scale, frame pacing, distance culling,
+    shadow/particle/acre quality, all in a gamepad-first in-game menu;
+    (5) muOS/PortMaster integration: launcher script, bundled 32-bit
+    fallback libraries, workarounds for the device's 32-bit PipeWire audio
+    stack; (6) 480p-friendly UI: aspect handling, letterbox/stretch modes,
+    overlay menu readable on a 3.4" screen. Upstream continues to target
+    desktops; this project is its own thing, focused on making the game
+    genuinely good on handheld hardware.
+  - **Performance detail** (was in status blockquote): v0.3.0 on RG-34XX
+    SP — ~56 fps average, median ~60, 78% of samples ≥55, ~100% game
+    speed, low-40s dips during heaviest acre streaming (full data
+    kb/perf.md).
+  - **Verbose save-management how-to** (now three lines in README):
+    back up = copy `.gci` out of `save/card_a/` before updating; delete
+    town = remove `.gci`, game creates fresh save on boot like a new
+    memory card; import = drop a Dolphin GCI export into `save/card_a/`;
+    restore = copy backup over. Always with the game closed.
+  - Device-table footnotes ("thanks to the RG35XX SP tester" etc.) and the
+    per-device tip attributions — testers: RG35XX SP (dpad tip), RG35XX H
+    modded stock (Select/Menu swap, issue #1).
+
 ## Standing decisions
 
 - Device build (armhf) is the product; desktop builds exist for development.
