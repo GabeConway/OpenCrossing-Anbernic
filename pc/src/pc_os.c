@@ -31,7 +31,13 @@ static s64 gc_epoch_offset_ticks = 0; /* Ticks from GC epoch to program start */
 s64 osGetTime(void) {
     u64 now = SDL_GetPerformanceCounter();
     u64 freq = SDL_GetPerformanceFrequency();
-    s64 elapsed = (s64)((now - time_base_start) * (u64)GC_TIMER_CLOCK / freq);
+    u64 diff = now - time_base_start;
+    /* Split whole seconds from the remainder before scaling to GC ticks:
+     * diff * GC_TIMER_CLOCK overflows u64 after ~455s of uptime when freq
+     * is 1GHz (Linux CLOCK_MONOTONIC), which made the in-game clock wrap
+     * back every ~7.6 minutes. rem < freq, so rem * GC_TIMER_CLOCK fits. */
+    s64 elapsed = (s64)((diff / freq) * (u64)GC_TIMER_CLOCK
+                      + (diff % freq) * (u64)GC_TIMER_CLOCK / freq);
     return gc_epoch_offset_ticks + elapsed;
 }
 

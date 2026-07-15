@@ -124,6 +124,17 @@
 
 ## Resolved (keep for pattern-matching)
 
+- In-game clock frozen on device: correct at boot/character select, then
+  ~1 in-game min per 24 real min (2026-07-15, RG28XX user repro 6:03→6:04
+  over 24 min) → u64 overflow in pc_os.c osGetTime():
+  `elapsed_ns * GC_TIMER_CLOCK` wraps every 455.5s when
+  SDL_GetPerformanceFrequency()=1e9 (Linux CLOCK_MONOTONIC), so the clock
+  sawtooths: climbs 7.59 min then snaps back to boot time (24 min real →
+  wrapped 73.6s elapsed = exactly the observed 6:04). All gameplay time
+  (lbRTC_GetGameTime = OSGetTime + time_delta) sat downstream. Fixed by
+  splitting whole seconds from remainder before tick scaling
+  ((diff/freq)*CLK + (diff%freq)*CLK/freq) — overflow-free. If clock bugs
+  recur, first suspect other cumulative-counter * constant multiplies.
 - Intro train black screen → decomp code must build unoptimized (kb/perf.md).
 - First-boot menu music stutter → shader seed warmup during splash.
 - No audio → 32-bit PipeWire env in launcher (kb/device.md).
