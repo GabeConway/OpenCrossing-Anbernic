@@ -90,7 +90,9 @@ dumps an "--- audio diag ---" block into log.txt.
 - `[PC] Controller '...': no analog stick detected, auto-enabling Dpad as
   Joystick` — dpad auto (only printed when setting is 2=auto)
 - `[PC] BOOT ERROR: ...` (stderr) — disc image missing/unreadable/wrong
-  version; the same text is shown full-screen on device (2026-07-19)
+  version; the same text is shown full-screen on device (2026-07-19,
+  DEVICE-VERIFIED same day: renamed iso → red error screen on RG-34XX SP,
+  button exit worked, BOOT ERROR lines present in log.txt)
 - `[PC] GCI: save copy N failed checksum` / `failed validation` — save
   rejected by load validation (2026-07-19); triage PC_NO_SAVE_VALIDATE=1
 - `[PC] Special event scheduled: ...`, `[PC] EvMgr wade place: ...`,
