@@ -103,3 +103,18 @@
 - README carries "not tested end-to-end" status until a full playthrough
   happens on device.
 - AI notice stays in README (platform code only, not decomp game code).
+
+## v0.5.0 (2026-07-19)
+
+- Save validation (GC-style checksum + ID on both card paths; garbage →
+  backups, Card B → abort travel; PC_NO_SAVE_VALIDATE=1 triage), Resetti
+  fix (armed reset_code persisted at game start, GC save-param semantics),
+  boot error screen (missing/unreadable/wrong-region disc; GAFE01
+  enforced). All device-verified before release. Diagnostics: special
+  event schedule, wade placement, empty-TLUT draws (verbose=1 only).
+- Docs: NES limitation (PPC-asm core), camper move-in by design, PAL FAQ
+  (issue #3), RG40XX H community-tested (issue #2).
+- Pre-release matrix (8 tests) all green; zip sanity-checked post-CI.
+- Open after release: tourney fishing-on-land (retest + wade log), green
+  diary magenta (empty-TLUT log), dock 1.4s hang ([PROF] awaiting log),
+  inventory aspect flicker.
