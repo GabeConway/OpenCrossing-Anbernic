@@ -89,6 +89,13 @@ dumps an "--- audio diag ---" block into log.txt.
   auto-detect fired (stderr since 2026-07-15)
 - `[PC] Controller '...': no analog stick detected, auto-enabling Dpad as
   Joystick` — dpad auto (only printed when setting is 2=auto)
+- `[PC] BOOT ERROR: ...` (stderr) — disc image missing/unreadable/wrong
+  version; the same text is shown full-screen on device (2026-07-19)
+- `[PC] GCI: save copy N failed checksum` / `failed validation` — save
+  rejected by load validation (2026-07-19); triage PC_NO_SAVE_VALIDATE=1
+- `[PC] Special event scheduled: ...`, `[PC] EvMgr wade place: ...`,
+  `[PC/TEX] ... EMPTY tlut slot N` — 2026-07-19 diagnostics (Redd-class
+  reports, tourney placement, palette-item pink)
 
 **Log truncation gotcha (2026-07-15)**: the stdout tail of log.txt (all
 gameplay telemetry — PERF/STUTTER/PROF) is LOST on force-quit +
