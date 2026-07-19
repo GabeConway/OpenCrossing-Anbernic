@@ -87,7 +87,7 @@ Developed on the **RG-34XX SP**; every H700 Anbernic shares the same chip
 | RG35XX H | 640×480 (4:3) | ✅ Community-tested on **modded stock OS** |
 | RG35XX Plus / 2024 / Pro | 640×480 (4:3) | ✅ Community-tested on **Knulli** — "perfectly stable" |
 | RG40XX V | 640×480 (4:3) | ✅ Community-tested on **Knulli** (two reports) |
-| RG40XX H | 640×480 (4:3) | Same chip and screen as the V; expected to work |
+| RG40XX H | 640×480 (4:3) | ✅ Community-tested — "works seamless" |
 | RG28XX | 640×480 (4:3) | ✅ Community-tested on **Knulli** |
 | RG CubeXX | 720×720 (1:1) | Square panel — expect letterboxing |
 

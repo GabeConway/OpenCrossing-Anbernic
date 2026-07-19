@@ -19,6 +19,11 @@
   maintainer): "works perfectly stable". Exact model not specified —
   listed on the Plus/2024/Pro row in the README table. Knulli
   confirmations now: RG28XX, RG40XX V, RG35XX.
+- **RG40XX H** (2026-07-19, issue #2): "works seamless on Gladiator 2 on
+  the RG40XX-H" — first RG40XX H confirmation (previously "expected to
+  work" from the shared H700 chip). OS reported as "Gladiator 2" — not a
+  known CFW name (muOS/Knulli/ROCKNIX/stock are the usual ones); recorded
+  verbatim, no log attached. README row upgraded to community-tested.
 - **RG35XX H on modded stock OS** (2026-07-15, issue #1): tested up to
   house selection with a **.ciso** image (30MB) — confirms the .ciso path
   works on-device. Third H700 device and third OS (muOS, Knulli, modded

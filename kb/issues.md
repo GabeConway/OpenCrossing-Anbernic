@@ -2,6 +2,68 @@
 
 ## Open
 
+- **Edited/foreign GCI saves load unvalidated → crash + save corruption**
+  (2026-07-19, from user report "save editor crash on entering game" +
+  upstream Dia2809/ACGC-PC-Port#28 "random gamefaqs GCI in card B → train
+  ride crash → home save corrupted, white face, empty inventory"; source
+  shared, applies to us). GC original gates every save read behind
+  `mFRm_CheckSaveData_common()` (ID + land_id + checksum,
+  src/game/m_flashrom.c:176, used m_card.c:2354/3106-3135/4392/7202) — but
+  m_card.c is excluded from the PC build; the port's replacement skips
+  nearly all of it. Gaps mapped (pc/src/pc_m_card.c): Card A
+  `pc_save_bswap_verify_roundtrip()` return ignored (:449); Card B travel
+  load has NO checksum at all, only the `mLd_CheckId()` land_id bitmask
+  (:533-547) and byte-swaps the raw file BEFORE any validation (:534);
+  Card B ARAM blocks (mail/original/diary) never verified (:570-577);
+  passport used with no checksum (:798, :1156). Crash chain: corrupted
+  save passes land_id → `mCD_toNextLand()` copies it over common_data
+  (:1143) → `mFM_SetBlockKindLoadCombi()` walks corrupted bx/bz/floor/
+  house_no indices (m_start_data_init.c:417-419) → OOB
+  `Save_Get(fg[bz][bx])` in m_field_make.c:169-193 → segfault; next
+  autosave then persists the trashed state (the #28 corruption). Timing
+  matches the save-editor report: crash lands right after the
+  enter-game dialogue, where InitGameStart/scene load first dereferences
+  the save. Fix lead: run `mFRm_ReturnCheckSum()`/
+  `mFRm_CheckSaveData_common()`-equivalent on the raw BE image before
+  bswap in both card paths; reject (keep .bak rotation) instead of load.
+  Also explains why editors that don't recompute the AC checksum "work"
+  on GC/Dolphin (which repair/reject) but kill the port.
+
+- **Design Editor SIGSEGV — unbounded tlut_name OOB writes** (2026-07-19,
+  from upstream Dia2809/ACGC-PC-Port#18 gdb trace: prbuf() ←
+  pc_gx_flush_vertices ← GXLoadTlut(idx=198906) ← dl_G_LOADTLUT
+  tlut_name=198906 count=29732; shared source, applies to us).
+  `emu64.c:3838` if-path reads `tlut_name` straight from the display list
+  and indexes the 16-entry `tlut_addresses[]`/`tlut_objs[]`
+  (emu64.hpp:760/762, NUM_TLUTS=16) and `s_tlut_first_word[16]`
+  (pc_gx_texture.c:17) with it — garbage value → OOB writes at
+  emu64.c:3841/3851/3852/3860/3875/3879 corrupt prbuf-adjacent globals →
+  crash in the flush. The else-path already masks `& 0xF` (:3897); the
+  if-path doesn't. Secondary: GXLoadTlut's own `idx >= 16` bounds check
+  (pc_gx_texture.c:1156) sits AFTER `pc_gx_flush_if_begin_complete()`
+  at :1155 — too late. Open question: why the Design Editor DL yields a
+  malformed G_LOADTLUT at all (tlut_name is a 4-bit field in
+  gbi_extensions.h:455, so 198906 means the DL is being misparsed —
+  alignment/struct-variant issue upstream of the OOB). Fix lead: mask/
+  reject tlut_name in the if-path + hoist the :1156 bounds check above
+  the flush; then chase the DL misparse with the editor open.
+
+- **NES furniture always says "no software"** (2026-07-19, from upstream
+  Dia2809/ACGC-PC-Port#29; ours behaves the same, deliberately):
+  `ac_my_room.c:2111-2116` `#ifdef TARGET_PC` stubs the whole famicom
+  launch — every NES furniture interaction gets
+  `aMR_MSG_STATE_NO_PACK_NO_DATA`, PC never reaches the GC branch that
+  distinguishes rom_no==0 (standalone console) from rom_no>0 (built-in
+  game → `aMR_RequestStartEmu()`, :2118-2122). The item→ROM table is
+  intact (`fFC_game_table[]` ac_famicom_common.c:78, 19 games +
+  ac_hayakawa_famicom.c rom_no=20); famicom fns stubbed in
+  pc_stubs.c:90-97. `pc_gx_restore_after_nes()` (pc_gx.c:522) exists but
+  has ZERO callers — scaffolding only, no NES core wired. So on our port
+  this is a missing feature, not a detection bug (upstream forks that
+  bundle fixnes have the same symptom because this gate predates their
+  integration). Options if ever wanted: wire rom_no>0 to an external emu
+  launch, or at least a clearer "not supported on this port" message.
+
 - **One-time 1.4s hang at the dock/beach, first visit** (2026-07-14 device log,
   v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
   work=1422.4ms gl=8.4ms tex=0.0ms draws=73` — single isolated frame, session

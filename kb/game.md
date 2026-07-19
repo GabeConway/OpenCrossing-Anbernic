@@ -23,8 +23,25 @@
   tabs: VIDEO/AUDIO/CTRL/DEBUG/PERF — menu item↔tab mapping in
   pc_overlay.c `menu_item_tab[]`.
 - Model viewer debug mode: `--model-viewer [index]`.
-- Built-in NES emulator: uses its own GL objects; after it runs,
-  `pc_gx_restore_after_nes()` rebinds ours and dirties all state — any new
-  global GL state must be handled there too.
+- Built-in NES emulator: NOT implemented on PC — `ac_my_room.c:2111`
+  `#ifdef TARGET_PC` stubs all famicom furniture to the "no software"
+  message (kb/issues.md 2026-07-19). `pc_gx_restore_after_nes()`
+  (pc_gx.c:522) is uncalled scaffolding; if an NES core is ever wired in
+  with its own GL objects, call it after the emu runs — it rebinds ours
+  and dirties all state, and any new global GL state must be handled
+  there too.
+- **Campsite villagers cannot move in — by design** (verified in source
+  2026-07-19 after a player report of talking/playing games for an hour
+  with no move-in offer): the camper is special NPC type 0xD05E
+  (m_npc.h:24 — 0xD000 event NPCs, vs 0xE0xx regular villagers); move-in
+  runs through the grow system (`mNpc_SetGrowNpc` m_npc.c:4382 sets
+  `moved_in` only for regular types; grow_list.c eligibility table covers
+  the 236 regular NPCs only) and the contract talk trigger
+  (ac_npc_talk.c_inc:446) never fires for special types. No pc/ override
+  touches any of this. Same as the original GC game — campers
+  (tent/igloo) are minigame/item visitors only; camper move-in is a
+  New Leaf-era mechanic. Not village-rating, not RNG bad luck. Save
+  editors are the only route, and see kb/issues.md — unvalidated edited
+  saves currently crash the port.
 - `--time HOUR` overrides in-game hour; handy for testing time-of-day
   rendering (fog/lighting TEV configs differ by hour → different shaders).
