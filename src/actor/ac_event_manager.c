@@ -1584,6 +1584,15 @@ static mEv_place_data_c* show_actor_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_e
             }
 
             be_flat_unit(place_data);
+#ifdef TARGET_PC
+            /* Diagnostic for "villagers fishing on land" reports: records the
+             * spot the event manager actually chose (be_flat_unit does not
+             * validate the tile is water). */
+            OSReport("[PC] EvMgr wade place: event=%d actor=0x%04X block=(%d,%d) unit=(%d,%d)\n",
+                     ctrl->type, place_data->actor_name,
+                     place_data->block.x, place_data->block.z,
+                     place_data->unit.x, place_data->unit.z);
+#endif
             if (CLIP(npc_clip)->setupActor_proc((GAME_PLAY*)gamePT, place_data->actor_name, -1, -1, -1, place_data->block.x, place_data->block.z, place_data->unit.x, place_data->unit.z) == FALSE) {
                 return NULL;
             }

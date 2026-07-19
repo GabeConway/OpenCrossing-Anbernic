@@ -17,7 +17,10 @@
   special-event schedule. ACTION: have reporters confirm build version;
   retest on v0.4.0+ across several real-time days before digging further.
   Sale Day (post-Thanksgiving) force-schedules a Redd sale
-  (m_event.c:994) — a quick calendar-set test.
+  (m_event.c:994) — a quick calendar-set test. INSTRUMENTED 2026-07-19:
+  `[PC] Special event scheduled: type=N start=M/D end=M/D (today M/D)`
+  logs whenever the scheduler rolls — next device log shows whether/when
+  Redd (type=BROKER_SALE) is on the calendar.
 
 - **Villagers "fishing on land" during the fishing tournament**
   (2026-07-19 user report). Tourney flow: `anglingtournament_start`
@@ -31,6 +34,9 @@
   positions GC could never roll. ACTION: retest on v0.4.0+ during a
   tournament; if it still happens, add a water-attribute check
   (mCoBG attribute lookup) before accepting a wade position.
+  INSTRUMENTED 2026-07-19: `[PC] EvMgr wade place: event=N actor=0x....
+  block=(x,z) unit=(x,z)` logs every wade placement — compare against
+  the pool block on the town map.
 
 - **Green diary furniture renders hot pink (missing-texture magenta)**
   (2026-07-19 user report): one diary recolor ("listed as green") draws in
@@ -41,8 +47,11 @@
   a palette whose first u16 matches the cached one but differs later would
   be wrongly kept), TLUT-keyed texture cache in pc_gx_texture.c
   (GXLoadTexObj tlut_key/tlut_hash_key), or an unhandled palette format
-  variant. Needs the item id + repro save to pin down; grep the log for
-  texture-decode fallbacks when it happens.
+  variant. Needs the item id + repro save to pin down.
+  INSTRUMENTED 2026-07-19: `[PC/TEX] C4/C8 texture WxH draws with EMPTY
+  tlut slot N` (pc_gx_texture.c GXLoadTexObj, capped at 16 lines) fires
+  if a palette item draws before its TLUT is loaded — grep the device
+  log right after reproducing the pink item.
 
 - **Design Editor SIGSEGV (upstream Dia2809/ACGC-PC-Port#18) — our code
   path looks NOT affected; needs a device test to confirm** (2026-07-19,

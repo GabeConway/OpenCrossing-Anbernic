@@ -1046,6 +1046,15 @@ static int init_special_event(int new_event) {
         Save_Set(event_year, rtc_time->year);
         Save_Get(post_office).leaflet_recipient_flags.event_flags =
             0b1111; // deliver leaflet to all players if necessary for event
+
+#ifdef TARGET_PC
+        /* Diagnostic for "special event / Redd letter never comes" reports:
+         * the schedule is otherwise invisible outside the save file. */
+        OSReport("[PC] Special event scheduled: type=%d start=%d/%d end=%d/%d (today %d/%d)\n",
+                 type, special_monthday[0].month, special_monthday[0].day,
+                 special_end_monthday.month, special_end_monthday.day,
+                 (rtc_sched.md >> 8) & 0xFF, rtc_sched.md & 0xFF);
+#endif
     }
 
     return res;

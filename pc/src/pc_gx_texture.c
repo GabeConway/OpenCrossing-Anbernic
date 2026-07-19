@@ -895,6 +895,17 @@ void GXLoadTexObj(void* obj, u32 id) {
                                               g_gx.tlut[tlut_name].format,
                                               g_gx.tlut[tlut_name].n_entries,
                                               g_gx.tlut[tlut_name].is_be);
+        } else {
+            /* Diagnostic for palette items rendering placeholder pink
+             * (e.g. the green diary report): a CI texture is being drawn
+             * with no palette loaded in its TLUT slot. Capped so a
+             * pathological frame can't flood the log. */
+            static int s_empty_tlut_logged = 0;
+            if (s_empty_tlut_logged < 16) {
+                s_empty_tlut_logged++;
+                printf("[PC/TEX] C%d texture %dx%d draws with EMPTY tlut slot %d\n",
+                       format == GX_TF_C4 ? 4 : 8, width, height, tlut_name);
+            }
         }
     }
 
