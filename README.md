@@ -69,6 +69,9 @@ the disc image (no extraction); saves, settings, and logs live in
   `ports/ac-gc/settings.ini`.
 - **Modded stock OS:** Select and Menu keys are reversed (all PortMaster
   games there) — **Menu/Function** opens settings, **Select+Start** exits.
+- **NES furniture says "I don't have any software":** expected — the NES
+  emulator does not exist in this port (see [FAQ](#faq)). Not a bug with
+  your files.
 - **Lid sleep/wake weirdness (muOS clamshells):** known muOS firmware quirk,
   not the port — press the power button to wake.
 - **Reporting a bug:** attach `ports/ac-gc/log.txt` — it's rewritten every
@@ -97,6 +100,12 @@ RK3566, etc.) are **not** expected to work.
 
 ## FAQ
 
+- **Do the NES games work?** No. The in-game NES emulator is PowerPC
+  assembly in the original code and cannot run on these devices, so every
+  NES furniture item shows *"I want to play my NES, but I don't have any
+  software."* — including items that have a built-in game on GameCube.
+  The rest of the furniture works normally. This may become an external-
+  emulator feature someday, but it is not on the roadmap.
 - **Does the Deluxe mod work?** Not yet — technically possible but a large
   amount of work; don't expect it soon.
 - **Can other GameCube games be ported this way?** Only games with a complete
@@ -116,6 +125,10 @@ RK3566, etc.) are **not** expected to work.
   Slot A is `ports/ac-gc/save/card_a/`, Slot B `save/card_b/`. With the game
   closed, manage `.gci` files directly: copy out = backup, delete = fresh
   town, drop a Dolphin export in = import. Back up before updating.
+  Saves are checksum-validated at load: a hand-hex-edited save that
+  doesn't recompute the Animal Crossing checksum is rejected (the game
+  falls back to its `.bak` backups instead of crashing) — use a save
+  editor that writes valid checksums.
 - **Texture packs:** Dolphin-format (XXHash64 DDS) in `texture_pack/`. The
   [community HD pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026)
   works, with a performance cost on handheld GPUs.
