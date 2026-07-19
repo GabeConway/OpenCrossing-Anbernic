@@ -106,6 +106,12 @@ RK3566, etc.) are **not** expected to work.
 
 ## FAQ
 
+- **Can I use the European (PAL) or Japanese disc?** No — the decompilation
+  this port is built from targets the USA `GAFE01` version specifically,
+  and the recompiled code expects that disc's exact data layout. PAL/JP
+  discs are different software (different code, timing, text banks) and
+  are detected and refused at launch with an on-screen message. Any
+  legally-dumped USA copy works.
 - **Do the NES games work?** No. The in-game NES emulator is PowerPC
   assembly in the original code and cannot run on these devices, so every
   NES furniture item shows *"I want to play my NES, but I don't have any
