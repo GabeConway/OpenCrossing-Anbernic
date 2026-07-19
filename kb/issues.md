@@ -2,26 +2,6 @@
 
 ## Open
 
-- **Redd never sends the visit letter** (2026-07-19 user report; user
-  hadn't checked prerequisites). Mechanics (traced): special events are
-  scheduled in `init_special_event` (m_event.c:865) — RNG seeded from RTC
-  (`player_id + (year-month) + day + hour`, :963) with the gap between
-  events derived from `day + month * sec` (:980); when the event day
-  arrives the event manager drops the sale leaflet in the mailbox
-  (`aEvMgr_actor_regist_broker_handbill`, ac_event_manager.c:130, mail
-  type mMl_TYPE_BROKER_SALE_LEAFLET) — no player-action prerequisite
-  found in the chain, it is purely schedule-driven. PORT SUSPECT: the
-  seed/gap math consumes live RTC fields, and until the osGetTime u64
-  wrap fix (2026-07-15, v0.4.0) the PC clock sawtoothed every 455.5s —
-  degenerate RTC values plausibly starved/pushed out the whole
-  special-event schedule. ACTION: have reporters confirm build version;
-  retest on v0.4.0+ across several real-time days before digging further.
-  Sale Day (post-Thanksgiving) force-schedules a Redd sale
-  (m_event.c:994) — a quick calendar-set test. INSTRUMENTED 2026-07-19:
-  `[PC] Special event scheduled: type=N start=M/D end=M/D (today M/D)`
-  logs whenever the scheduler rolls — next device log shows whether/when
-  Redd (type=BROKER_SALE) is on the calendar.
-
 - **Villagers "fishing on land" during the fishing tournament**
   (2026-07-19 user report). Tourney flow: `anglingtournament_start`
   (ac_event_manager.c:2722) reserves the pool block and spawns 5 NPCs;
@@ -69,8 +49,10 @@
   emu64.c differs; a raw-shift read without the bitfield/mask would
   produce exactly such garbage). Residual local risk is only the
   `*(u16*)tlut_addr` reuse-detection deref (emu64.c:3850) on a garbage DL
-  address — no evidence of that here. ACTION: open the Design Editor on
-  device once and record the result here.
+  address — no evidence of that here. DEVICE-VERIFIED 2026-07-19
+  (RG-34XX SP): Design Editor opens, edits, and saves fine — upstream #18
+  confirmed NOT present in our tree. Entry kept for the analysis; nothing
+  to fix.
 
 - **One-time 1.4s hang at the dock/beach, first visit** (2026-07-14 device log,
   v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
@@ -182,6 +164,15 @@
 
 ## Resolved (keep for pattern-matching)
 
+- **"Redd never sends the visit letter"** (reported + user-confirmed
+  NOT A BUG same day, 2026-07-19): Redd showed up eventually. Special
+  events are purely schedule-driven (init_special_event m_event.c:865,
+  gap ≥2 days, seeded off RTC + player id; leaflet lands via
+  ac_event_manager.c:130) — no player-action prerequisite, just
+  patience. Scheduler log line kept
+  (`[PC] Special event scheduled: ...`) — answers this class of report
+  straight from log.txt next time.
+
 - **Edited/foreign GCI saves loaded unvalidated → crash + home-save
   corruption** (RESOLVED on dev 2026-07-19, device-verify pending; from
   user report "save editor crash right after the enter-game dialogue" +
@@ -224,7 +215,9 @@
   iff param_1==0, else keep/arm; dropped the old always-re-arm-in-memory
   block). Repro check: quit without saving → next load logs
   `[PC] Reset detected!` and Resetti shows; save-and-quit → no Resetti.
-  `disable_resetti` setting unaffected (default 0).
+  `disable_resetti` setting unaffected (default 0). DEVICE-VERIFIED
+  2026-07-19 (RG-34XX SP): user confirmed Resetti appears after a
+  no-save quit.
 
 - **Item dupe: save while holding a tool → reload → copy in hands AND
   pockets** (RESOLVED 2026-07-15; opened 2026-07-14, GCI forensics detail
