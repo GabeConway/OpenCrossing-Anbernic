@@ -2109,8 +2109,12 @@ static void aMR_FamicomEmuCommonMove(FTR_ACTOR* ftr_actor, ACTOR* actorx, GAME* 
 
     if (ftr_actor->switch_changed_flag) {
 #ifdef TARGET_PC
-        /* NES emulators are not implemented on PC — show "no data" message and return */
+        /* NES emulators are not implemented on PC — the GC NES core
+         * (Famicom/ks_nes_core.cpp) is PowerPC inline assembly and does not
+         * build for this target. Show the "no data" message and return. */
         if (mMsg_Check_MainHide(mMsg_Get_base_window_p())) {
+            OSReport("[PC] NES furniture: emulator not available on PC (rom_no=%d) — showing 'no software'\n",
+                     rom_no);
             my_room->requested_msg_type = aMR_MSG_STATE_NO_PACK_NO_DATA;
             my_room->room_msg_flag = TRUE;
         }

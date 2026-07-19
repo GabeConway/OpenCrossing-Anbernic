@@ -233,13 +233,17 @@ static void pc_ensure_save_dirs(void) {
 #endif
 }
 
-static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path);
+static int pc_save_write_gci_ex(const char* gci_path, const char* tmp_path, int rotate_backups);
 
 static int pc_save_write_gci(void) {
-    return pc_save_write_gci_to(PC_GCI_PATH, PC_GCI_TMP_PATH);
+    return pc_save_write_gci_ex(PC_GCI_PATH, PC_GCI_TMP_PATH, 1);
 }
 
 static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
+    return pc_save_write_gci_ex(gci_path, tmp_path, 1);
+}
+
+static int pc_save_write_gci_ex(const char* gci_path, const char* tmp_path, int rotate_backups) {
     FILE* fp;
     u8* file_data;
     CARDDir dir_hdr;
@@ -371,7 +375,9 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
     fclose(fp);
     free(file_data);
 
-    pc_save_rotate_backups(gci_path);
+    if (rotate_backups) {
+        pc_save_rotate_backups(gci_path);
+    }
     if (rename(tmp_path, gci_path) != 0) {
         OSReport("[PC] GCI save: rename '%s' -> '%s' failed, recovering...\n",
                  tmp_path, gci_path);
@@ -386,6 +392,36 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
 
     OSReport("[PC] GCI save: written successfully to %s (backups rotated)\n", gci_path);
     return TRUE;
+}
+
+/* A valid AC save block's big-endian u16s sum to 0 (mFRm_ReturnCheckSum
+ * semantics). Must run on the raw BE image, before pc_save_bswap — the
+ * struct-aware swap does not preserve u16 sums across u32/u64 fields. */
+static int pc_save_be_sum_ok(const u8* data, u32 size) {
+    u32 i;
+    u16 sum = 0;
+
+    for (i = 0; i + 1 < size; i += 2) {
+        sum = (u16)(sum + (u16)(((u16)data[i] << 8) | data[i + 1]));
+    }
+    return sum == 0;
+}
+
+/* Triage switch: PC_NO_SAVE_VALIDATE=1 restores the old load-anything
+ * behavior in case validation ever rejects a save it shouldn't. */
+static int pc_save_validate_enabled(void) {
+    static int init = 0;
+    static int on = 1;
+
+    if (!init) {
+        const char* e = getenv("PC_NO_SAVE_VALIDATE");
+        on = !(e != NULL && e[0] == '1');
+        init = 1;
+        if (!on) {
+            OSReport("[PC] Save validation DISABLED (PC_NO_SAVE_VALIDATE=1)\n");
+        }
+    }
+    return on;
 }
 
 /* Read a GCI file into common_data (for home town / Card A) */
@@ -445,11 +481,43 @@ static int pc_save_read_gci(const char* path) {
     }
     fclose(fp);
 
-    save_src = (Save_t*)(file_data + GCI_SAVE_MAIN_OFFSET);
-    pc_save_bswap_verify_roundtrip((const u8*)save_src, sizeof(Save_t));
+    /* Validate like the GC load path (m_card.c:3106): BE u16 sum over the
+     * whole entry must be 0, then save ID / land id checks on the swapped
+     * struct. Try the main copy, then the in-file backup at +0x4C000. If
+     * both fail, refuse the file — the caller falls back to .bak rotations
+     * instead of loading garbage that crashes in mFM_SetBlockKindLoadCombi
+     * (externally edited saves without a recomputed checksum land here). */
+    {
+        static const u32 copy_offs[2] = { GCI_SAVE_MAIN_OFFSET, GCI_SAVE_BACK_OFFSET };
+        int validate = pc_save_validate_enabled();
+        int ci;
+        int ok = FALSE;
 
-    memcpy(&common_data.save.save, save_src, sizeof(Save_t));
-    pc_save_bswap(&common_data.save.save, PC_BSWAP_FROM_BE);
+        for (ci = 0; ci < 2 && !ok; ci++) {
+            save_src = (Save_t*)(file_data + copy_offs[ci]);
+            if (validate && !pc_save_be_sum_ok((const u8*)save_src, sizeof(Save))) {
+                OSReport("[PC] GCI: save copy %d failed checksum\n", ci);
+                continue;
+            }
+            memcpy(&common_data.save.save, save_src, sizeof(Save_t));
+            pc_save_bswap(&common_data.save.save, PC_BSWAP_FROM_BE);
+            if (validate && !mFRm_CheckSaveData_common(&common_data.save.save.save_check,
+                                                      common_data.save.save.land_info.id)) {
+                OSReport("[PC] GCI: save copy %d failed save ID / land id check\n", ci);
+                continue;
+            }
+            ok = TRUE;
+        }
+
+        if (!ok) {
+            OSReport("[PC] GCI: '%s' failed validation (externally edited or corrupt) — not loading it\n",
+                     path);
+            memset(&common_data.save.save, 0, sizeof(Save_t));
+            free(file_data);
+            return FALSE;
+        }
+        pc_save_bswap_verify_roundtrip((const u8*)save_src, sizeof(Save_t));
+    }
 
     /* --- Load ARAM blocks from Others section ---
      * Current saves (PC + Dolphin/GC) use order: mail, original, diary.
@@ -478,25 +546,47 @@ static int pc_save_read_gci(const char* path) {
             off_diary = ALIGN_NEXT(off_mail + mail_size, 32);
         }
 
+        /* Per-block checksums, like GC's mCD_SaveStation_NextLand_load_others
+         * (m_card.c:6081): bad block → fall back to an empty block instead of
+         * loading garbage. Only enforced for gc_order saves — legacy-order PC
+         * saves predate block checksum stamping. */
         if (l_aram_block_p_table[mCD_ARAM_DATA_MAIL]) {
-            pc_save_bswap_verify_roundtrip_mail(others_ptr + off_mail, mail_size);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], others_ptr + off_mail, mail_size);
-            pc_save_bswap_keep_mail((mCD_keep_mail_c*)l_aram_block_p_table[mCD_ARAM_DATA_MAIL],
-                                    PC_BSWAP_FROM_BE);
+            if (gc_order && !pc_save_be_sum_ok(others_ptr + off_mail, mail_size)) {
+                OSReport("[PC] GCI: mail block failed checksum — using empty block\n");
+                memset(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], 0, mail_size);
+            } else {
+                pc_save_bswap_verify_roundtrip_mail(others_ptr + off_mail, mail_size);
+                memcpy(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], others_ptr + off_mail, mail_size);
+                pc_save_bswap_keep_mail((mCD_keep_mail_c*)l_aram_block_p_table[mCD_ARAM_DATA_MAIL],
+                                        PC_BSWAP_FROM_BE);
+            }
         }
         if (l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL]) {
-            pc_save_bswap_verify_roundtrip_original(others_ptr + off_orig, orig_size);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], others_ptr + off_orig, orig_size);
-            pc_save_bswap_keep_original((mCD_keep_original_c*)l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
-                                        PC_BSWAP_FROM_BE);
+            if (gc_order && !pc_save_be_sum_ok(others_ptr + off_orig, orig_size)) {
+                OSReport("[PC] GCI: original-designs block failed checksum — using empty block\n");
+                memset(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], 0, orig_size);
+            } else {
+                pc_save_bswap_verify_roundtrip_original(others_ptr + off_orig, orig_size);
+                memcpy(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], others_ptr + off_orig, orig_size);
+                pc_save_bswap_keep_original((mCD_keep_original_c*)l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
+                                            PC_BSWAP_FROM_BE);
+            }
         }
         if (l_aram_block_p_table[mCD_ARAM_DATA_DIARY]) {
-            pc_save_bswap_verify_roundtrip_diary(others_ptr + off_diary,
-                                                  l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], others_ptr + off_diary,
-                   l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
-            pc_save_bswap_keep_diary((mCD_keep_diary_c*)l_aram_block_p_table[mCD_ARAM_DATA_DIARY],
-                                     PC_BSWAP_FROM_BE);
+            if (gc_order && !pc_save_be_sum_ok(others_ptr + off_diary,
+                                               l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY])) {
+                OSReport("[PC] GCI: diary block failed checksum — using empty block\n");
+                memset(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], 0,
+                       l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+                pc_init_diary_entries(l_aram_block_p_table[mCD_ARAM_DATA_DIARY]);
+            } else {
+                pc_save_bswap_verify_roundtrip_diary(others_ptr + off_diary,
+                                                      l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+                memcpy(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], others_ptr + off_diary,
+                       l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+                pc_save_bswap_keep_diary((mCD_keep_diary_c*)l_aram_block_p_table[mCD_ARAM_DATA_DIARY],
+                                         PC_BSWAP_FROM_BE);
+            }
         }
     }
 
@@ -528,19 +618,41 @@ static int pc_save_read_gci_to_keep(const char* path) {
     }
     fclose(fp);
 
-    /* Load Save_t into l_keepSave (try main, fall back to backup) */
-    save_src = (Save_t*)(file_data + GCI_SAVE_MAIN_OFFSET);
-    memcpy(&l_keepSave.save, save_src, sizeof(Save_t));
-    pc_save_bswap(&l_keepSave.save, PC_BSWAP_FROM_BE);
+    /* Load Save_t into l_keepSave — validate the raw BE image like the GC
+     * path (checksum, then save ID / land id); try main, then backup copy.
+     * A random downloaded/edited GCI that fails here aborts the travel
+     * cleanly instead of crashing in the visited town's scene load and
+     * corrupting the home save on the way down. */
+    {
+        static const u32 copy_offs[2] = { GCI_SAVE_MAIN_OFFSET, GCI_SAVE_BACK_OFFSET };
+        int validate = pc_save_validate_enabled();
+        int ci;
+        int ok = FALSE;
 
-    /* Validate — if main is corrupt, try backup */
-    if (!mLd_CheckId(l_keepSave.save.land_info.id)) {
-        OSReport("[PC] Card B: main save invalid, trying backup\n");
-        save_src = (Save_t*)(file_data + GCI_SAVE_BACK_OFFSET);
-        memcpy(&l_keepSave.save, save_src, sizeof(Save_t));
-        pc_save_bswap(&l_keepSave.save, PC_BSWAP_FROM_BE);
-        if (!mLd_CheckId(l_keepSave.save.land_info.id)) {
-            OSReport("[PC] Card B: backup save also invalid\n");
+        for (ci = 0; ci < 2 && !ok; ci++) {
+            save_src = (Save_t*)(file_data + copy_offs[ci]);
+            if (validate && !pc_save_be_sum_ok((const u8*)save_src, sizeof(Save))) {
+                OSReport("[PC] Card B: save copy %d failed checksum\n", ci);
+                continue;
+            }
+            memcpy(&l_keepSave.save, save_src, sizeof(Save_t));
+            pc_save_bswap(&l_keepSave.save, PC_BSWAP_FROM_BE);
+            if (!mLd_CheckId(l_keepSave.save.land_info.id)) {
+                OSReport("[PC] Card B: save copy %d has invalid land id\n", ci);
+                continue;
+            }
+            if (validate && !mFRm_CheckSaveData_common(&l_keepSave.save.save_check,
+                                                      l_keepSave.save.land_info.id)) {
+                OSReport("[PC] Card B: save copy %d failed save ID / land id check\n", ci);
+                continue;
+            }
+            ok = TRUE;
+        }
+
+        if (!ok) {
+            OSReport("[PC] Card B: '%s' failed validation (edited or corrupt) — refusing to travel\n",
+                     path);
+            memset(&l_keepSave, 0, sizeof(Save));
             free(file_data);
             return FALSE;
         }
@@ -567,14 +679,32 @@ static int pc_save_read_gci_to_keep(const char* path) {
             off_diary = ALIGN_NEXT(off_mail + mail_size, 32);
         }
 
-        memcpy(&l_keepMail, others_ptr + off_mail, mail_size);
-        pc_save_bswap_keep_mail(&l_keepMail, PC_BSWAP_FROM_BE);
+        /* Per-block checksums (see Card A load): bad block → empty block. */
+        if (gc_order && !pc_save_be_sum_ok(others_ptr + off_mail, mail_size)) {
+            OSReport("[PC] Card B: mail block failed checksum — using empty block\n");
+            memset(&l_keepMail, 0, sizeof(l_keepMail));
+        } else {
+            memcpy(&l_keepMail, others_ptr + off_mail, mail_size);
+            pc_save_bswap_keep_mail(&l_keepMail, PC_BSWAP_FROM_BE);
+        }
 
-        memcpy(&l_keepOriginal, others_ptr + off_orig, orig_size);
-        pc_save_bswap_keep_original(&l_keepOriginal, PC_BSWAP_FROM_BE);
+        if (gc_order && !pc_save_be_sum_ok(others_ptr + off_orig, orig_size)) {
+            OSReport("[PC] Card B: original-designs block failed checksum — using empty block\n");
+            memset(&l_keepOriginal, 0, sizeof(l_keepOriginal));
+        } else {
+            memcpy(&l_keepOriginal, others_ptr + off_orig, orig_size);
+            pc_save_bswap_keep_original(&l_keepOriginal, PC_BSWAP_FROM_BE);
+        }
 
-        memcpy(&l_keepDiary, others_ptr + off_diary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
-        pc_save_bswap_keep_diary(&l_keepDiary, PC_BSWAP_FROM_BE);
+        if (gc_order && !pc_save_be_sum_ok(others_ptr + off_diary,
+                                           l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY])) {
+            OSReport("[PC] Card B: diary block failed checksum — using empty block\n");
+            memset(&l_keepDiary, 0, sizeof(l_keepDiary));
+            pc_init_diary_entries(&l_keepDiary);
+        } else {
+            memcpy(&l_keepDiary, others_ptr + off_diary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+            pc_save_bswap_keep_diary(&l_keepDiary, PC_BSWAP_FROM_BE);
+        }
     }
 
     free(file_data);
@@ -790,6 +920,17 @@ int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s3
                 /* Arm reset code: if player quits without saving, next load detects it */
                 Now_Private->reset_code = (u32)RANDOM_F(USHT_MAX_S);
                 Now_Private->reset_code++;
+
+                /* Persist the armed code now, like the GC did at game start.
+                 * Saves are otherwise only written at session end, so quitting
+                 * without saving would leave the file with a cleared
+                 * reset_code and Resetti could never trigger. A proper save
+                 * later overwrites this with reset_code cleared. No backup
+                 * rotation here — a rotation every boot would churn the
+                 * .bak1-3 window that save recovery depends on. */
+                if (!pc_save_write_gci_ex(PC_GCI_PATH, PC_GCI_TMP_PATH, 0)) {
+                    OSReport("[PC] InitGameStart: failed to persist armed reset_code\n");
+                }
             }
 
             /* Handle foreigner start conditions */
@@ -854,9 +995,18 @@ int mCD_SaveHome_bg(int param_1, int* chan) {
      * every load even after being killed. */
     mCkRh_SavePlayTime(Common_Get(player_no));
 
-    /* Clear reset code before saving — marks this as a proper shutdown */
+    /* Reset trap (Resetti), mirroring GC mCD_SaveHome_bg_set_data
+     * (m_card.c:3329-3334): a final save (param_1 == 0, save-and-quit)
+     * clears the reset code — proper shutdown; a save-and-continue
+     * (param_1 != 0) keeps it armed on disk so quitting later without
+     * saving is detected on the next load. */
     if (Now_Private != NULL) {
-        Now_Private->reset_code = 0;
+        if (param_1 == 0) {
+            Now_Private->reset_code = 0;
+        } else if (Now_Private->reset_code == 0) {
+            Now_Private->reset_code = (u32)RANDOM_F(USHT_MAX_S);
+            Now_Private->reset_code++;
+        }
     }
 
     if (slot == mCD_SLOT_B && l_card_b_gci_path[0] != '\0') {
@@ -873,13 +1023,6 @@ int mCD_SaveHome_bg(int param_1, int* chan) {
     if (!result) {
         OSReport("[PC] mCD_SaveHome_bg: save failed!\n");
         return mCD_TRANS_ERR_IOERROR;
-    }
-
-    /* Re-arm reset code after successful save — if player quits without
-     * saving again, we'll detect it next load */
-    if (Now_Private != NULL) {
-        Now_Private->reset_code = (u32)RANDOM_F(USHT_MAX_S);
-        Now_Private->reset_code++;
     }
 
     return mCD_TRANS_ERR_NONE;
