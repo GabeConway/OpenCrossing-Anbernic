@@ -19,6 +19,11 @@
   maintainer): "works perfectly stable". Exact model not specified —
   listed on the Plus/2024/Pro row in the README table. Knulli
   confirmations now: RG28XX, RG40XX V, RG35XX.
+- **RG40XX H** (2026-07-19, issue #2): "works seamless on Gladiator 2 on
+  the RG40XX-H" — first RG40XX H confirmation (previously "expected to
+  work" from the shared H700 chip). OS reported as "Gladiator 2" — not a
+  known CFW name (muOS/Knulli/ROCKNIX/stock are the usual ones); recorded
+  verbatim, no log attached. README row upgraded to community-tested.
 - **RG35XX H on modded stock OS** (2026-07-15, issue #1): tested up to
   house selection with a **.ciso** image (30MB) — confirms the .ciso path
   works on-device. Third H700 device and third OS (muOS, Knulli, modded
@@ -84,6 +89,23 @@ dumps an "--- audio diag ---" block into log.txt.
   auto-detect fired (stderr since 2026-07-15)
 - `[PC] Controller '...': no analog stick detected, auto-enabling Dpad as
   Joystick` — dpad auto (only printed when setting is 2=auto)
+- `[PC] BOOT ERROR: ...` (stderr) — disc image missing/unreadable/wrong
+  version; the same text is shown full-screen on device (2026-07-19,
+  DEVICE-VERIFIED same day: renamed iso → red error screen on RG-34XX SP,
+  button exit worked, BOOT ERROR lines present in log.txt)
+- `[PC] GCI: save copy N failed checksum` / `failed validation` — save
+  rejected by load validation (2026-07-19); triage PC_NO_SAVE_VALIDATE=1
+- `[PC] Special event scheduled: ...`, `[PC] EvMgr wade place: ...`,
+  `[PC/TEX] ... EMPTY tlut slot N` — 2026-07-19 diagnostics (Redd-class
+  reports, tourney placement, palette-item pink)
+
+**verbose=0 discards stdout entirely (2026-07-19)**: pc_main freopens
+stdout to /dev/null when verbose is off, so every OSReport/printf line —
+GCI validation, `[PC] Reset detected!`, the 2026-07-19 diagnostics —
+never reaches log.txt regardless of clean exit. Only stderr (boot lines,
+BOOT ERROR, autodetect) survives. Any diagnostic capture session needs
+`verbose = 1` in settings.ini first (flip back after — SD-backed stdout
+costs a little CPU).
 
 **Log truncation gotcha (2026-07-15)**: the stdout tail of log.txt (all
 gameplay telemetry — PERF/STUTTER/PROF) is LOST on force-quit +

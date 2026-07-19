@@ -437,6 +437,81 @@ int pc_platform_poll_events(void) {
     return 1;
 }
 
+/* Boot-time fatal error: show a readable full-screen message instead of the
+ * black screen users report when the disc image is missing or wrong. Any
+ * button/key (or 60s timeout) exits back to the frontend. Never returns. */
+static void pc_boot_fatal(const char* const* lines, int n_lines) {
+    Uint32 start = SDL_GetTicks();
+    int i;
+
+    for (i = 0; i < n_lines; i++) {
+        fprintf(stderr, "[PC] BOOT ERROR: %s\n", lines[i]);
+    }
+
+    while (SDL_GetTicks() - start < 60000) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            switch (ev.type) {
+                case SDL_QUIT:
+                case SDL_KEYDOWN:
+                case SDL_JOYBUTTONDOWN:
+                case SDL_CONTROLLERBUTTONDOWN:
+                    exit(1);
+                case SDL_JOYDEVICEADDED:
+                    /* open so button presses generate events */
+                    SDL_JoystickOpen(ev.jdevice.which);
+                    break;
+                default:
+                    break;
+            }
+        }
+        pc_overlay_boot_error_frame(lines, n_lines);
+        SDL_Delay(50);
+    }
+    exit(1);
+}
+
+static void pc_check_disc_or_die(void) {
+    if (!pc_disc_init()) {
+        if (pc_disc_last_error() == PC_DISC_ERR_NO_IMAGE) {
+            static const char* lines[] = {
+                "NO GAME DISC IMAGE FOUND",
+                "",
+                "Put your own Animal Crossing (USA)",
+                "disc image (.iso/.gcm/.ciso) in:",
+                "ports/ac-gc/rom/",
+                "",
+                "The game cannot start without it.",
+            };
+            pc_boot_fatal(lines, (int)(sizeof(lines) / sizeof(lines[0])));
+        } else {
+            static const char* lines[] = {
+                "DISC IMAGE COULD NOT BE READ",
+                "",
+                "The file in ports/ac-gc/rom/ is not",
+                "a valid GameCube disc image.",
+                "",
+                "Re-dump or re-copy your .iso file.",
+            };
+            pc_boot_fatal(lines, (int)(sizeof(lines) / sizeof(lines[0])));
+        }
+    }
+
+    if (strncmp(pc_disc_game_id(), "GAFE01", 6) != 0) {
+        static char found_line[40];
+        static const char* lines[] = {
+            "WRONG GAME VERSION",
+            "",
+            found_line,
+            "Required: GAFE01 (Animal Crossing USA)",
+            "",
+            "PAL / JP / e+ discs are not supported.",
+        };
+        snprintf(found_line, sizeof(found_line), "This disc is: %s", pc_disc_game_id());
+        pc_boot_fatal(lines, (int)(sizeof(lines) / sizeof(lines[0])));
+    }
+}
+
 /* game's main() renamed to ac_entry via -Dmain=ac_entry, boot.c's to boot_main */
 extern void ac_entry(void);
 extern int boot_main(int argc, const char** argv);
@@ -532,7 +607,7 @@ int main(int argc, char* argv[]) {
 
     pc_keybindings_load();
     pc_platform_init();
-    pc_disc_init();
+    pc_check_disc_or_die();
     pc_assets_init();
 
     ac_entry();                         /* sets HotStartEntry = &entry */

@@ -2,6 +2,58 @@
 
 ## Open
 
+- **Villagers "fishing on land" during the fishing tournament**
+  (2026-07-19 user report). Tourney flow: `anglingtournament_start`
+  (ac_event_manager.c:2722) reserves the pool block and spawns 5 NPCs;
+  placement goes through `search_free_unit` (:714) whose seed again uses
+  live RTC (`month*day + sec + (hour+cur)*3 + seed*9`, :728), and
+  `be_flat_unit` (:1586) converts block/unit → world pos WITHOUT
+  validating the tile is water (GC never needed to — sane seeds kept
+  positions in the reserved pool block). Same port suspect as the Redd
+  entry: pre-v0.4.0 frozen/sawtoothing clock → degenerate seeds →
+  positions GC could never roll. ACTION: retest on v0.4.0+ during a
+  tournament; if it still happens, add a water-attribute check
+  (mCoBG attribute lookup) before accepting a wade position.
+  INSTRUMENTED 2026-07-19: `[PC] EvMgr wade place: event=N actor=0x....
+  block=(x,z) unit=(x,z)` logs every wade placement — compare against
+  the pool block on the town map.
+
+- **Green diary furniture renders hot pink (missing-texture magenta)**
+  (2026-07-19 user report): one diary recolor ("listed as green") draws in
+  the placeholder pink used for graphical glitches; other recolors fine.
+  Furniture recolors share one texture and differ by TLUT palette, so the
+  lead is the TLUT/recolor path, not the texture itself: emu64
+  dl_G_LOADTLUT reuse-detection (emu64.c:3841-3855 first-word heuristic —
+  a palette whose first u16 matches the cached one but differs later would
+  be wrongly kept), TLUT-keyed texture cache in pc_gx_texture.c
+  (GXLoadTexObj tlut_key/tlut_hash_key), or an unhandled palette format
+  variant. Needs the item id + repro save to pin down.
+  INSTRUMENTED 2026-07-19: `[PC/TEX] C4/C8 texture WxH draws with EMPTY
+  tlut slot N` (pc_gx_texture.c GXLoadTexObj, capped at 16 lines) fires
+  if a palette item draws before its TLUT is loaded — grep the device
+  log right after reproducing the pink item.
+
+- **Design Editor SIGSEGV (upstream Dia2809/ACGC-PC-Port#18) — our code
+  path looks NOT affected; needs a device test to confirm** (2026-07-19,
+  analysis corrected same day). Upstream gdb trace shows dl_G_LOADTLUT
+  with tlut_name=198906/count=29732 indexing 16-entry TLUT arrays → OOB →
+  prbuf corruption → crash in pc_gx_flush_vertices. In OUR tree that
+  value is unreachable: the type==2 path reads tlut_name through the
+  4-bit bitfield (gbi_extensions.h:455, TARGET_PC-reversed layout) so it
+  can never exceed 15 (= NUM_TLUTS-1), and the N64 else-path both masks
+  `& 0xF` (emu64.c:3897) and bounds-checks (:3924); GXLoadTlut also
+  rejects idx>=16 (pc_gx_texture.c:1156 — the flush before it is
+  harmless, it only drains pending vertices). The Design Editor's DL
+  comes from gsDPLoadTLUT_Dolphin at m_design_ovl.c:2590 — well-formed.
+  Upstream's crash is most plausibly their divergent DL parsing (their
+  emu64.c differs; a raw-shift read without the bitfield/mask would
+  produce exactly such garbage). Residual local risk is only the
+  `*(u16*)tlut_addr` reuse-detection deref (emu64.c:3850) on a garbage DL
+  address — no evidence of that here. DEVICE-VERIFIED 2026-07-19
+  (RG-34XX SP): Design Editor opens, edits, and saves fine — upstream #18
+  confirmed NOT present in our tree. Entry kept for the analysis; nothing
+  to fix.
+
 - **One-time 1.4s hang at the dock/beach, first visit** (2026-07-14 device log,
   v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
   work=1422.4ms gl=8.4ms tex=0.0ms draws=73` — single isolated frame, session
@@ -87,7 +139,85 @@
   worst were the 24 mid-session shader compiles — fixed by 101-config
   seed (kb/perf.md #12).
 
+## Port limitations (by design — answer reports with these, don't reopen)
+
+- **NES/famicom furniture always says "I don't have any software"**
+  (2026-07-19, upstream Dia2809/ACGC-PC-Port#29 + our user report "SNES
+  only spawning Donkey Kong / game not working"): the GC NES core
+  (src/static/Famicom/ks_nes_core.cpp — `ksNesResetAsm`,
+  `ksNesEmuFrameAsm`) is PowerPC inline assembly; it cannot build for
+  ARM/x86, so pc/CMakeLists.txt:351 excludes Famicom/ entirely and
+  `ac_my_room.c:2111` `#ifdef TARGET_PC` routes every NES furniture
+  interaction to `aMR_MSG_STATE_NO_PACK_NO_DATA` (now logs
+  `[PC] NES furniture: emulator not available on PC`). Everything else is
+  present and portable: item→ROM table (`fFC_game_table[]`
+  ac_famicom_common.c:78, 19 titles + hayakawa rom_no=20), ROM data in
+  the user's own ISO (/FAMICOM/*.szs), management code famicom.cpp, stubs
+  pc_stubs.c:82-98, GL-restore scaffolding `pc_gx_restore_after_nes()`
+  (pc_gx.c:522, currently zero callers). Enabling would mean porting the
+  6502+PPU core (weeks) or wiring an external emulator — tracked as a
+  possible future feature, not a bug.
+
+- **Campsite (tent/igloo) villagers can never move in** — game design,
+  same as real GC hardware; full source proof in kb/game.md. Not RNG,
+  not village rating.
+
 ## Resolved (keep for pattern-matching)
+
+- **"Redd never sends the visit letter"** (reported + user-confirmed
+  NOT A BUG same day, 2026-07-19): Redd showed up eventually. Special
+  events are purely schedule-driven (init_special_event m_event.c:865,
+  gap ≥2 days, seeded off RTC + player id; leaflet lands via
+  ac_event_manager.c:130) — no player-action prerequisite, just
+  patience. Scheduler log line kept
+  (`[PC] Special event scheduled: ...`) — answers this class of report
+  straight from log.txt next time.
+
+- **Edited/foreign GCI saves loaded unvalidated → crash + home-save
+  corruption** (RESOLVED on dev 2026-07-19, device-verify pending; from
+  user report "save editor crash right after the enter-game dialogue" +
+  upstream Dia2809/ACGC-PC-Port#28 "random gamefaqs GCI in card B → train
+  crash → white face, empty inventory"). Root cause: m_card.c (and its
+  `mFRm_CheckSaveData_common` + whole-entry checksum gating,
+  m_card.c:3106/3357) is excluded from the PC build and pc_m_card.c
+  replaced it with almost no validation — Card B checked only the
+  `mLd_CheckId` land_id bitmask, Card A nothing (roundtrip return
+  ignored). Corrupt data then flowed into `mCD_toNextLand` →
+  `mFM_SetBlockKindLoadCombi` → OOB `Save_Get(fg[bz][bx])`
+  (m_field_make.c:169-193) → segfault at exactly "after the enter-game
+  dialogue" / mid-train-ride; the next save persisted the trashed state.
+  Fix (pc_m_card.c): `pc_save_be_sum_ok()` — BE u16 sum over
+  `sizeof(Save)` on the RAW image before bswap (struct-aware bswap does
+  not preserve u16 sums; region matches GC entrysize and the PC writer's
+  flat checksum, stamped since the first commit so every legit PC/GC/
+  Dolphin save passes) + `mFRm_CheckSaveData_common()` after bswap; both
+  card paths now try main copy then in-file backup, then refuse — Card A
+  falls back to .bak rotations, Card B aborts the trip with
+  TRANS_ERR_CORRUPT before anything is copied. ARAM blocks
+  (mail/original/diary) get per-block sums like GC
+  (m_card.c:6081-6098), bad block → empty block; enforced only for
+  gc_order saves (legacy PC block order predates block stamping).
+  Triage switch: `PC_NO_SAVE_VALIDATE=1`. Note for save-editor users:
+  editors must recompute the AC checksum (most GCI editors do; raw hex
+  edits now get rejected at load instead of crashing — game falls back
+  to backups/new-game rather than booting garbage).
+- **Resetti never appears after quitting without saving** (RESOLVED on
+  dev 2026-07-19, device-verify pending; user report). Two port gaps
+  vs GC (m_card.c:3329-3334 + the start-of-game card write): (a) the
+  armed `reset_code` set at game start existed only in memory — PC wrote
+  the GCI at session end only, so a no-save quit left the file with a
+  cleared code and detection could never fire; (b) `mCD_SaveHome_bg`
+  cleared the code on EVERY save, but GC clears it only on the final
+  save-and-quit (`_04==0`) and keeps it armed for save-and-continue
+  (param 1, aNRST door save). Fix (pc_m_card.c): persist the save right
+  after arming in `mCD_InitGameStart_bg` (like GC's game-start card
+  write), and make `mCD_SaveHome_bg` mirror GC param semantics (clear
+  iff param_1==0, else keep/arm; dropped the old always-re-arm-in-memory
+  block). Repro check: quit without saving → next load logs
+  `[PC] Reset detected!` and Resetti shows; save-and-quit → no Resetti.
+  `disable_resetti` setting unaffected (default 0). DEVICE-VERIFIED
+  2026-07-19 (RG-34XX SP): user confirmed Resetti appears after a
+  no-save quit.
 
 - **Item dupe: save while holding a tool → reload → copy in hands AND
   pockets** (RESOLVED 2026-07-15; opened 2026-07-14, GCI forensics detail

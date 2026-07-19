@@ -35,6 +35,8 @@ typedef struct {
 /* ---- global state ---- */
 static DiscFile g_disc;
 static int g_disc_open = 0;
+static int g_disc_error = PC_DISC_ERR_NONE;
+static char g_disc_id[8] = "";
 
 /* DOL info */
 static u32 g_dol_offset = 0;
@@ -311,11 +313,20 @@ int pc_disc_init(void) {
     char path[512];
 
     if (g_disc_open) return 1;
-    if (!find_disc_image(path, sizeof(path))) return 0;
-    if (!disc_open(&g_disc, path)) return 0;
+    if (!find_disc_image(path, sizeof(path))) {
+        g_disc_error = PC_DISC_ERR_NO_IMAGE;
+        fprintf(stderr, "[PC] No disc image (.iso/.gcm/.ciso) found in rom/\n");
+        return 0;
+    }
+    if (!disc_open(&g_disc, path)) {
+        g_disc_error = PC_DISC_ERR_BAD_IMAGE;
+        fprintf(stderr, "[PC] %s: could not be opened\n", path);
+        return 0;
+    }
 
     if (!gcm_verify(&g_disc)) {
-        if (g_pc_verbose) printf("[PC] %s: not a valid GC disc image\n", path);
+        fprintf(stderr, "[PC] %s: not a valid GC disc image\n", path);
+        g_disc_error = PC_DISC_ERR_BAD_IMAGE;
         disc_close(&g_disc);
         return 0;
     }
@@ -324,7 +335,8 @@ int pc_disc_init(void) {
         u8 id[7];
         disc_read(&g_disc, 0, id, 6);
         id[6] = '\0';
-        if (g_pc_verbose) printf("[PC] Disc image: %s (%s, %s)\n",
+        memcpy(g_disc_id, id, 7);
+        fprintf(stderr, "[PC] Disc image: %s (%s, %s)\n",
             path, g_disc.is_ciso ? "CISO" : "ISO/GCM", id);
     }
 
@@ -341,6 +353,15 @@ int pc_disc_init(void) {
 
 int pc_disc_is_open(void) {
     return g_disc_open;
+}
+
+int pc_disc_last_error(void) {
+    return g_disc_error;
+}
+
+/* 6-char game id from the disc header ("GAFE01"), empty until init succeeds */
+const char* pc_disc_game_id(void) {
+    return g_disc_id;
 }
 
 int pc_disc_find_file(const char* path, u32* disc_offset, u32* file_size) {

@@ -1119,6 +1119,61 @@ void pc_overlay_boot_splash(const char* msg) {
     SDL_GL_SwapWindow(g_pc_window);
 }
 
+/* One frame of the boot fatal-error panel (multi-line, centered, dark red
+ * background so it can't be mistaken for the normal black boot screen).
+ * Caller loops and swaps events; see pc_boot_fatal() in pc_main.c. */
+void pc_overlay_boot_error_frame(const char* const* lines, int n_lines) {
+    int i;
+
+    if (!ov_prog || !g_pc_window) return;
+
+    glViewport(0, 0, g_pc_window_w, g_pc_window_h);
+    glClearColor(0.28f, 0.02f, 0.02f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(ov_prog);
+    glBindVertexArray(ov_vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ov_tex);
+    glUniform1i(ov_loc_font, 0);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+
+    {
+        int scale = g_pc_window_h / 240;
+        float cw, ch, line_h, y;
+
+        if (scale < 1) scale = 1;
+        if (scale > 4) scale = 4;
+        cw = 8.0f * scale;
+        ch = 8.0f * scale;
+        line_h = ch * 1.5f;
+
+        ov_nv = 0;
+        y = ((float)g_pc_window_h - line_h * (float)n_lines) * 0.5f;
+        for (i = 0; i < n_lines; i++) {
+            const char* s = lines[i];
+            float x = ((float)g_pc_window_w - (float)strlen(s) * cw) * 0.5f;
+            if (i == 0) {
+                ov_string(s, x, y, cw, ch, 1.0f, 0.85f, 0.3f, 1.0f); /* title: yellow */
+            } else {
+                ov_string(s, x, y, cw, ch, 1.0f, 1.0f, 1.0f, 1.0f);
+            }
+            y += line_h;
+        }
+
+        if (ov_nv > 0) {
+            glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(ov_nv * sizeof(OvVtx)), ov_verts);
+            glDrawArrays(GL_TRIANGLES, 0, ov_nv);
+        }
+    }
+
+    SDL_GL_SwapWindow(g_pc_window);
+}
+
 void pc_overlay_draw(void) {
     if (!ov_prog) return;
 
