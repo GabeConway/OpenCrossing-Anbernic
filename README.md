@@ -55,9 +55,15 @@ the disc image (no extraction); saves, settings, and logs live in
 
 ### Troubleshooting
 
-- **Black screen / instant exit:** check that your iso is in
+- **"NO GAME DISC IMAGE FOUND" / "WRONG GAME VERSION" screen:** the port
+  couldn't use your disc image — check that your iso is in
   `ports/ac-gc/rom/` and is the USA `GAFE01` version. `.iso`, `.gcm`, and
-  `.ciso` all work.
+  `.ciso` all work. (Older builds showed a plain black screen or exited
+  instantly in this situation.)
+- **Black screen / instant exit** (without an error screen): attach
+  `ports/ac-gc/log.txt` to a bug report — on current builds a missing or
+  wrong iso is reported on-screen, so a silent black screen is something
+  else.
 - **No audio:** quit and relaunch once — the audio stack sometimes needs a
   second start after first install.
 - **Can't walk / no analog stick:** current builds detect stickless
