@@ -99,6 +99,14 @@ dumps an "--- audio diag ---" block into log.txt.
   `[PC/TEX] ... EMPTY tlut slot N` — 2026-07-19 diagnostics (Redd-class
   reports, tourney placement, palette-item pink)
 
+**verbose=0 discards stdout entirely (2026-07-19)**: pc_main freopens
+stdout to /dev/null when verbose is off, so every OSReport/printf line —
+GCI validation, `[PC] Reset detected!`, the 2026-07-19 diagnostics —
+never reaches log.txt regardless of clean exit. Only stderr (boot lines,
+BOOT ERROR, autodetect) survives. Any diagnostic capture session needs
+`verbose = 1` in settings.ini first (flip back after — SD-backed stdout
+costs a little CPU).
+
 **Log truncation gotcha (2026-07-15)**: the stdout tail of log.txt (all
 gameplay telemetry — PERF/STUTTER/PROF) is LOST on force-quit +
 unclean unmount/power-off, even with line-buffered stdout. A device log
