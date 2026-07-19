@@ -390,7 +390,8 @@ static int pc_save_write_gci_ex(const char* gci_path, const char* tmp_path, int 
         return FALSE;
     }
 
-    OSReport("[PC] GCI save: written successfully to %s (backups rotated)\n", gci_path);
+    OSReport("[PC] GCI save: written successfully to %s%s\n", gci_path,
+             rotate_backups ? " (backups rotated)" : "");
     return TRUE;
 }
 
